@@ -41,9 +41,6 @@ void AConcreteAscentGameModeBase::HandleGameClear()
 {
 	bGameCleared = true;
 
-	if (PlayerCharacter)
-		PlayerCharacter->SetMovementState(EMovementState::Cleared);
-
 	// TODO: UI로 종료 화면 보여주기
 }
 

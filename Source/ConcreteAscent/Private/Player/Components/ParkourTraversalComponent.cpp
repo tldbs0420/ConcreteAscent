@@ -58,7 +58,7 @@ bool UParkourTraversalComponent::StartLedgeGrab(float Direction)
 
 void UParkourTraversalComponent::MoveAlongLedge(float Direction)
 {
-	if (!OwnerCharacter || OwnerCharacter->GetMovementState() != EMovementState::Hanging)
+	if (!OwnerCharacter)
 		return;
 
 	// TODO: ALedgeObstacle로 가로 폭 확인하여 이동 가능한지 확인 후 몽타주 처리

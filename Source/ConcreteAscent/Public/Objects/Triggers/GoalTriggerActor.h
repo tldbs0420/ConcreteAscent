@@ -33,3 +33,4 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Goal")
 	bool IsCleared() const { return bIsCleared; }
 };
+

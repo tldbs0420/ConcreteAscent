@@ -41,7 +41,7 @@ public:
 	TObjectPtr<UAnimMontage> LedgeDropMontage;
 
 	UFUNCTION(BlueprintPure, Category = "Motion Matching")
-	UPoseSearchDatabase* GetLocomotionDatabase(EMovementState State) const;
+	UPoseSearchDatabase* GetLocomotionDatabase(EMovementMode State) const;
 
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	UAnimMontage* GetLedgeGrabMontage() const { return LedgeGrabMontage; }

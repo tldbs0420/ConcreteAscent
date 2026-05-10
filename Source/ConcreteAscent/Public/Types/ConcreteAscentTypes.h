@@ -8,14 +8,24 @@
 UENUM(BlueprintType)
 enum class EMovementState : uint8
 {
-	Idle UMETA(DisplayName = "Idle"),
-	Walking UMETA(DisplayName = "Walking"),
-	Running UMETA(DisplayName = "Running"),
-	Jumping UMETA(DisplayName = "Jumping"),
-	Falling UMETA(DisplayName = "Falling"),
+	OnGround UMETA(DisplayName = "OnGround"),
+	InAir UMETA(DisplayName = "InAir"),
 	Hanging UMETA(DisplayName = "Hanging"),
-	Climbing UMETA(DisplayName = "Climbing"),
-	Cleared UMETA(DisplayName = "Cleared")
+};
+
+UENUM(BlueprintType)
+enum class EMoveMode : uint8
+{
+	Idle UMETA(DisplayName = "Idle"),
+	Move UMETA(DisplayName = "Move"),
+};
+
+UENUM(BlueprintType)
+enum class EGait : uint8
+{
+	Walk UMETA(DisplayName = "Walk"),
+	Run UMETA(DisplayName = "Run"),
+	Sprint UMETA(DisplayName = "Sprint"),
 };
 
 UENUM(BlueprintType)
@@ -36,9 +46,6 @@ USTRUCT(BlueprintType)
 struct CONCRETEASCENT_API FTraversalChooserInputs
 {
 	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
-	EMovementState MovementState = EMovementState::Idle;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
 	ETraversalAction TraversalAction = ETraversalAction::None;

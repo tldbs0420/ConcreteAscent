@@ -24,31 +24,41 @@ public:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 protected:
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(Transient, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<AConcreteAscentCharacter> OwnerCharacter;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UParkourMotionData> MotionData;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	float Speed = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	float Direction = 0.f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	bool bIsInAir = false;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Animation")
-	EMovementState MovementState = EMovementState::Idle;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EMovementState MovementState = EMovementState::OnGround;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EMovementState MovementStateLastFrame = EMovementState::OnGround;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EMoveMode MoveMode = EMoveMode::Idle;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EMoveMode MoveModeLastFrame = EMoveMode::Idle;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EGait Gait = EGait::Walk;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	EGait GaitLastFrame = EGait::Walk;
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Animation")
-	void UpdateFromCharacter();
+	void GetGaitFromPlayer();
 
 	UFUNCTION(BlueprintPure, Category = "Animation")
 	UPoseSearchDatabase* SelectLocomotionDatabase() const;
-
-	UFUNCTION(BlueprintPure, Category = "Animation")
-	AConcreteAscentCharacter* GetOwnerCharacter() const { return OwnerCharacter; }
 };

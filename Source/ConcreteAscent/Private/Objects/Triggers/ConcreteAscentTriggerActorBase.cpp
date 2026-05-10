@@ -7,7 +7,6 @@
 #include "GameMode/ConcreteAscentGameModeBase.h"
 #include "Engine/World.h"
 
-// Sets default values
 AConcreteAscentTriggerActorBase::AConcreteAscentTriggerActorBase()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
@@ -21,7 +20,6 @@ AConcreteAscentTriggerActorBase::AConcreteAscentTriggerActorBase()
 	TriggerVolume->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 }
 
-// Called when the game starts or when spawned
 void AConcreteAscentTriggerActorBase::BeginPlay()
 {
 	Super::BeginPlay();

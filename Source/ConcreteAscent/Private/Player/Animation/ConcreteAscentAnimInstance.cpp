@@ -21,23 +21,16 @@ void UConcreteAscentAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	if (!OwnerCharacter)
 		OwnerCharacter = Cast<AConcreteAscentCharacter>(TryGetPawnOwner());
-
-	UpdateFromCharacter();
 }
 
-void UConcreteAscentAnimInstance::UpdateFromCharacter()
+void UConcreteAscentAnimInstance::GetGaitFromPlayer()
 {
 	if (!OwnerCharacter)
 		return;
-
-	const FVector Velocity = OwnerCharacter->GetVelocity();
-	Speed = FVector(Velocity.X, Velocity.Y, 0.f).Size();
-	Direction = UKismetAnimationLibrary::CalculateDirection(Velocity, OwnerCharacter->GetActorRotation());
-	bIsInAir = OwnerCharacter->GetCharacterMovement() ? OwnerCharacter->GetCharacterMovement()->IsFalling() : false;
-	MovementState = OwnerCharacter->GetMovementState();
+	Gait = OwnerCharacter->GetGait();
 }
 
 UPoseSearchDatabase* UConcreteAscentAnimInstance::SelectLocomotionDatabase() const
 {
-	return MotionData ? MotionData->GetLocomotionDatabase(MovementState) : nullptr;
+	return MotionData ? MotionData->GetLocomotionDatabase(OwnerCharacter->GetCharacterMovement()->MovementMode) : nullptr;
 }

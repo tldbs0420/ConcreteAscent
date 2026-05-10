@@ -3,16 +3,14 @@
 
 #include "Data/ParkourMotionData.h"
 
-UPoseSearchDatabase* UParkourMotionData::GetLocomotionDatabase(EMovementState State) const
+UPoseSearchDatabase* UParkourMotionData::GetLocomotionDatabase(EMovementMode State) const
 {
 	switch (State)
 	{
-	case EMovementState::Jumping:
-	case EMovementState::Falling:
+	case EMovementMode::MOVE_Falling:
+	case EMovementMode::MOVE_Flying:
 		return JumpDatabase;
-	case EMovementState::Idle:
-	case EMovementState::Walking:
-	case EMovementState::Running:
+	case EMovementMode::MOVE_Walking:
 	default:
 		return MoveDatabase;
 	}
