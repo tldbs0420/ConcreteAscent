@@ -37,6 +37,9 @@ protected:
 	float Direction = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
+	float HeavyLandThreshold = 700.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	bool bIsInAir = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
