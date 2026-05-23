@@ -3,7 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "ConcreteAscentTypes.generated.h"
+
+class UPrimitiveComponent;
+class UAnimMontage;
 
 UENUM(BlueprintType)
 enum class EMovementState : uint8
@@ -48,13 +52,13 @@ struct CONCRETEASCENT_API FTraversalChooserInputs
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
-	ETraversalAction TraversalAction = ETraversalAction::None;
+	ETraversalAction ActionType = ETraversalAction::None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
-	float ObstacleHeight = 0.f;
+	TEnumAsByte<EMovementMode> MovementMode = MOVE_Walking;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
-	float ObstacleThickness = 0.f;
+	EGait Gait = EGait::Run;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
 	float Speed = 0.f;
@@ -67,4 +71,76 @@ struct CONCRETEASCENT_API FTraversalChooserInputs
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
 	bool bHasBackFloor = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float ObstacleHeight = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float ObstacleDepth = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float BackLedgeHeight = 0.f;
+};
+
+USTRUCT(BlueprintType)
+struct CONCRETEASCENT_API FTraversalChooserOutputs
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	ETraversalAction ActionType = ETraversalAction::None;
+};
+
+USTRUCT(BlueprintType)
+struct CONCRETEASCENT_API FTraversalCheckResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	ETraversalAction ActionType = ETraversalAction::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	bool bHasFrontLedge = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	FVector FrontLedgeLocation = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	FVector FrontLedgeNormal = FVector::ForwardVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	bool bHasBackLedge = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	FVector BackLedgeLocation = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	FVector BackLedgeNormal = FVector::ForwardVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	bool bHasBackFloor = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	FVector BackFloorLocation = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float ObstacleHeight = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float ObstacleDepth = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float BackLedgeHeight = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	TObjectPtr<UPrimitiveComponent> HitComponent = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	TObjectPtr<UAnimMontage> ChosenMontage = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float StartTime = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Traversal")
+	float PlayRate = 1.f;
 };

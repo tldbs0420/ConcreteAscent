@@ -63,6 +63,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	float LastLandingVerticalSpeed = 0.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|MotionWarping")
+	float FrontLedgeOutwardOffset = 8.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
+	bool bIsTraversing = false;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
+	TEnumAsByte<EMovementMode> PreviousMovementMode = MOVE_Walking;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
+	uint8 PreviousCustomMovementMode = 0;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
 	TObjectPtr<UInputAction> MoveAction;
 	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
@@ -83,14 +95,33 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
 	TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
 	TObjectPtr<UParkourTraversalComponent> ParkourTraversalComponent;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
+	FTraversalCheckResult CurrentTraversalResult;
 
 	UFUNCTION(BlueprintCallable, Category = "Ascent|Movement")
 	void UpdateGait();
 
 	FTimerHandle JustLandedTimerHandle;
 	void ClearJustLanded();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal")
+	void BeginTraversal();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal")
+	void EndTraversal();
+
+	UFUNCTION()
+	void OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal|MotionWarping")
+	bool BP_GetDistanceFromLedgeAtWarpEnd(
+		UAnimMontage* Montage,
+		FName WarpTargetName,
+		float& OutDistance
+	) const;
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
@@ -117,10 +148,10 @@ public:
 	void SetMovementState(EMovementState NewState);
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	void ApplyWarpTarget(const FName WarpTargetName, const FTransform& WarpTargetTransform);
+	void UpdateTraversalWarpTargets(const FTraversalCheckResult& TraversalResult);
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	float PlayTraversalMontage(class UAnimMontage* Montage);
+	float PlayTraversalMontage(UAnimMontage* Montage, float PlayRate = 1.f, float StartTime = 0.f);
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	bool CanMove() const { return bCanMove; }

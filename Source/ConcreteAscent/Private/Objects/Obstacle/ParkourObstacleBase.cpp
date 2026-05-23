@@ -32,5 +32,137 @@ void AParkourObstacleBase::OnConstruction(const FTransform& Transform)
 	Super::OnConstruction(Transform);
 
 	// TODO: TraversalBound를 기준으로 폭과 높이 조정
+	if (!TraversalBounds)
+	{
+		return;
+	}
+
+	const FVector ScaledExtent = TraversalBounds->GetScaledBoxExtent();
+
+	Height = ScaledExtent.Z * 2.f;
+
+	// 기본 Thickness는 더 짧은 수평축 기준으로 저장
+	// 실제 traversal depth는 플레이어 방향에 따라 나중에 계산됨
+	Thickness = FMath::Min(ScaledExtent.X, ScaledExtent.Y) * 2.f;
+}
+
+bool AParkourObstacleBase::GetTraversalLedgeData_Implementation(const FHitResult& HitResult, const FVector& ActorLocation, FVector& OutFrontLedgeLocation, FVector& OutFrontLedgeNormal, FVector& OutBackLedgeLocation, FVector& OutBackLedgeNormal, float& OutObstacleHeight, float& OutObstacleDepth) const
+{
+	if (!TraversalBounds)
+	{
+		return false;
+	}
+
+	const FTransform BoundsTransform = TraversalBounds->GetComponentTransform();
+	const FVector BoxExtent = TraversalBounds->GetUnscaledBoxExtent();
+
+	// 1. 플레이어 위치는 "어느 면에서 접근했는지" 판단하는 기준으로 사용
+	const FVector LocalActorLocation =
+		BoundsTransform.InverseTransformPosition(ActorLocation);
+
+	// 2. 실제 Hit 지점은 "ledge의 좌우 위치를 잡는 기준"으로 사용
+	const FVector ReferenceWorldLocation =
+		HitResult.bBlockingHit ? HitResult.ImpactPoint : ActorLocation;
+
+	const FVector LocalReferenceLocation =
+		BoundsTransform.InverseTransformPosition(ReferenceWorldLocation);
+
+	const FVector LocalToActor = LocalActorLocation;
+
+	const float SafeExtentX = FMath::Max(BoxExtent.X, KINDA_SMALL_NUMBER);
+	const float SafeExtentY = FMath::Max(BoxExtent.Y, KINDA_SMALL_NUMBER);
+
+	// 플레이어가 X면 쪽에 가까운지, Y면 쪽에 가까운지 판단
+	const float NormalizedX = FMath::Abs(LocalToActor.X) / SafeExtentX;
+	const float NormalizedY = FMath::Abs(LocalToActor.Y) / SafeExtentY;
+
+	FVector FrontNormalLocal = FVector::ZeroVector;
+	FVector BackNormalLocal = FVector::ZeroVector;
+
+	FVector FrontLedgeLocal = FVector::ZeroVector;
+	FVector BackLedgeLocal = FVector::ZeroVector;
+
+	if (NormalizedX >= NormalizedY)
+	{
+		const float SignX = LocalToActor.X >= 0.f ? 1.f : -1.f;
+
+		// 플레이어가 있는 쪽 면
+		FrontNormalLocal = FVector(SignX, 0.f, 0.f);
+
+		// 반대쪽 면
+		BackNormalLocal = -FrontNormalLocal;
+
+		// Ledge의 좌우 위치는 실제 충돌 지점 기준으로 잡음
+		const float ClampedY = FMath::Clamp(
+			LocalReferenceLocation.Y,
+			-BoxExtent.Y,
+			BoxExtent.Y
+		);
+
+		FrontLedgeLocal = FVector(
+			SignX * BoxExtent.X,
+			ClampedY,
+			BoxExtent.Z
+		);
+
+		BackLedgeLocal = FVector(
+			-SignX * BoxExtent.X,
+			ClampedY,
+			BoxExtent.Z
+		);
+	}
+	else
+	{
+		const float SignY = LocalToActor.Y >= 0.f ? 1.f : -1.f;
+
+		// 플레이어가 있는 쪽 면
+		FrontNormalLocal = FVector(0.f, SignY, 0.f);
+
+		// 반대쪽 면
+		BackNormalLocal = -FrontNormalLocal;
+
+		// Ledge의 좌우 위치는 실제 충돌 지점 기준으로 잡음
+		const float ClampedX = FMath::Clamp(
+			LocalReferenceLocation.X,
+			-BoxExtent.X,
+			BoxExtent.X
+		);
+
+		FrontLedgeLocal = FVector(
+			ClampedX,
+			SignY * BoxExtent.Y,
+			BoxExtent.Z
+		);
+
+		BackLedgeLocal = FVector(
+			ClampedX,
+			-SignY * BoxExtent.Y,
+			BoxExtent.Z
+		);
+	}
+
+	OutFrontLedgeLocation =
+		BoundsTransform.TransformPosition(FrontLedgeLocal);
+
+	OutBackLedgeLocation =
+		BoundsTransform.TransformPosition(BackLedgeLocal);
+
+	OutFrontLedgeNormal =
+		BoundsTransform.TransformVectorNoScale(FrontNormalLocal).GetSafeNormal();
+
+	OutBackLedgeNormal =
+		BoundsTransform.TransformVectorNoScale(BackNormalLocal).GetSafeNormal();
+
+	// 이 값은 디버그/보조용.
+	// 실제 Chooser용 ObstacleHeight는 ParkourTraversalComponent에서 CapsuleBottom 기준으로 다시 계산하는 걸 추천.
+	OutObstacleHeight =
+		TraversalBounds->GetScaledBoxExtent().Z * 2.f;
+
+	OutObstacleDepth = FVector::Dist2D(
+		OutFrontLedgeLocation,
+		OutBackLedgeLocation
+	);
+
+	return true;
 }
 

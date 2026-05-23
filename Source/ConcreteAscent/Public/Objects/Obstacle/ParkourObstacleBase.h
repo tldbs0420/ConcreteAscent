@@ -37,6 +37,10 @@ protected:
 public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Traversal")
+	bool GetTraversalLedgeData(const FHitResult& HitResult,const FVector& ActorLocation, FVector& OutFrontLedgeLocation, FVector& OutFrontLedgeNormal, FVector& OutBackLedgeLocation, FVector& OutBackLedgeNormal, float& OutObstacleHeight, float& OutObstacleDepth) const;
+	virtual bool GetTraversalLedgeData_Implementation(const FHitResult& HitResult, const FVector& ActorLocation, FVector& OutFrontLedgeLocation, FVector& OutFrontLedgeNormal, FVector& OutBackLedgeLocation, FVector& OutBackLedgeNormal, float& OutObstacleHeight, float& OutObstacleDepth) const;
+
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	float GetHeight() const { return Height; }
 
