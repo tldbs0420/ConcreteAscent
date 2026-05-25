@@ -13,6 +13,7 @@ class UMotionWarpingComponent;
 class UParkourTraversalComponent;
 class USpringArmComponent;
 class UCameraComponent;
+class UAnimMontage;
 
 UCLASS()
 class CONCRETEASCENT_API AConcreteAscentCharacter : public ACharacter
@@ -23,13 +24,45 @@ public:
 	AConcreteAscentCharacter();
 
 protected:
-	// ACharacter Override
+	// ACharacter interface
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
 	virtual void Landed(const FHitResult& Hit) override;
 
+protected:
+	// Components
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USpringArmComponent> CameraArm;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCameraComponent> FollowCamera;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
+	TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
+	TObjectPtr<UParkourTraversalComponent> ParkourTraversalComponent;
+
+protected:
+	// Input actions
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> MoveAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> LookAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> JumpInputAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> WalkInputAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> SprintInputAction;
+
+protected:
+	// Movement state
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	EGait Gait = EGait::Walk;
 
@@ -43,70 +76,51 @@ protected:
 	bool bSprint = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
-	bool bIsGrounded = true;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	bool bIsHanging = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	bool bJustLanded = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
-	float WalkMaxSpeed = 200;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
-	float RunMaxSpeed = 500;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
-	float SprintMaxSpeed = 700;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	float LastLandingVerticalSpeed = 0.f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|MotionWarping")
-	float FrontLedgeOutwardOffset = 8.f;
+protected:
+	// Movement settings
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
+	float WalkMaxSpeed = 200.f;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
+	float RunMaxSpeed = 500.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
+	float SprintMaxSpeed = 700.f;
+
+protected:
+	// Traversal state
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
 	bool bIsTraversing = false;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
-	TEnumAsByte<EMovementMode> PreviousMovementMode = MOVE_Walking;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
-	uint8 PreviousCustomMovementMode = 0;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
-	TObjectPtr<UInputAction> MoveAction;
-	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
-	TObjectPtr<UInputAction> LookAction;
-	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
-	TObjectPtr<UInputAction> JumpInputAction;
-	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
-	TObjectPtr<UInputAction> WalkInputAction;
-	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
-	TObjectPtr<UInputAction> SprintInputAction;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Camera", meta = (AllowPrivateAccess = "true"))
-	USpringArmComponent* CameraArm;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Camera", meta = (AllowPrivateAccess = "true"))
-	UCameraComponent* FollowCamera;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
-	TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
-	TObjectPtr<UParkourTraversalComponent> ParkourTraversalComponent;
-
-	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
 	FTraversalCheckResult CurrentTraversalResult;
 
+protected:
+	// Traversal settings
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|MotionWarping")
+	float FrontLedgeOutwardOffset = 8.f;
+
+protected:
+	// Timers
+	FTimerHandle JustLandedTimerHandle;
+
+protected:
+	// Movement helpers
 	UFUNCTION(BlueprintCallable, Category = "Ascent|Movement")
 	void UpdateGait();
 
-	FTimerHandle JustLandedTimerHandle;
 	void ClearJustLanded();
 
+protected:
+	// Traversal helpers
 	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal")
 	void BeginTraversal();
 
@@ -116,14 +130,13 @@ protected:
 	UFUNCTION()
 	void OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
+protected:
+	// Blueprint extension points
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal|MotionWarping")
-	bool BP_GetDistanceFromLedgeAtWarpEnd(
-		UAnimMontage* Montage,
-		FName WarpTargetName,
-		float& OutDistance
-	) const;
+	bool BP_GetDistanceFromLedgeAtWarpEnd(UAnimMontage* Montage, FName WarpTargetName, float& OutDistance) const;
 
 public:
+	// Input
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void Move(const FInputActionValue& InputValue);
 
@@ -141,23 +154,23 @@ public:
 
 	virtual void Jump() override;
 
+public:
+	// Character state
 	UFUNCTION(BlueprintCallable, Category = "Character")
 	void RespawnAt(const FTransform& RespawnTransform);
 
-	UFUNCTION(BlueprintCallable, Category = "Character")
-	void SetMovementState(EMovementState NewState);
-
+public:
+	// Traversal
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	void UpdateTraversalWarpTargets(const FTraversalCheckResult& TraversalResult);
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	float PlayTraversalMontage(UAnimMontage* Montage, float PlayRate = 1.f, float StartTime = 0.f);
 
+public:
+	// Character getters
 	UFUNCTION(BlueprintPure, Category = "Character")
 	bool CanMove() const { return bCanMove; }
-
-	UFUNCTION(BlueprintPure, Category = "Character")
-	bool IsGrounded() const { return bIsGrounded; }
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	bool IsHanging() const { return bIsHanging; }
@@ -177,10 +190,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Character")
 	EGait GetGait() const { return Gait; }
 
+public:
+	// Component getters
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	UMotionWarpingComponent* GetMotionWarpingComponent() const { return MotionWarpingComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	UParkourTraversalComponent* GetParkourTraversalComponent() const { return ParkourTraversalComponent; }
-
 };

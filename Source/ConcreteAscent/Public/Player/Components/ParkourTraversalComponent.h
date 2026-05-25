@@ -25,18 +25,26 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+protected:
+	// Owner
 	UPROPERTY(Transient)
 	TObjectPtr<AConcreteAscentCharacter> OwnerCharacter;
 
+	// Data
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal")
 	TObjectPtr<UParkourMotionData> MotionData;
 
+	// Runtime obstacle state
 	UPROPERTY(Transient)
 	TObjectPtr<AParkourObstacleBase> DetectedObstacle;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ALedgeObstacle> CurrentLedge;
 
+	UPROPERTY(Transient)
+	FHitResult LastObstacleHit;
+
+	// Runtime traversal state
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal")
 	float CurrentLedgeOffset = 0.f;
 
@@ -49,12 +57,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal")
 	FTraversalChooserOutputs CurrentTraversalOutputs;
 
-	UPROPERTY(Transient)
-	FHitResult LastObstacleHit;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UAnimMontage>> CurrentValidMontages;
-
+	// Trace settings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Trace")
 	TEnumAsByte<ECollisionChannel> TraversableTraceChannel = ECC_GameTraceChannel1;
 
@@ -73,28 +76,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Trace")
 	float FloorCheckExtraDistance = 100.f;
 
+	// Pose Search settings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|PoseSearch")
 	float BranchInEndStartOffset = 0.03f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|MotionWarping")
-	FName TraversalWarpTargetName = TEXT("TraversalTarget");
-
+protected:
+	// Trace helpers
 	bool CapsuleSweep(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const;
 	bool HasCapsuleRoom(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const;
 
+	// Traversal data helpers
 	FTraversalCheckResult BuildTraversalCheckResult(AParkourObstacleBase* ObstacleBase);
-
-	FTraversalChooserInputs MakeChooserInputsFromCheckResult(
-		const FTraversalCheckResult& CheckResult
-	) const;
-
-	FTransform BuildWarpTargetFromCheckResult(
-		const FTraversalCheckResult& CheckResult
-	) const;
-
-	void ApplyTraversalWarpTarget(const FTransform& WarpTarget);
+	FTraversalChooserInputs MakeChooserInputsFromCheckResult(const FTraversalCheckResult& CheckResult) const;
 
 public:
+	// Traversal flow
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	AParkourObstacleBase* DetectObstacle();
 
@@ -104,6 +100,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	bool StartTraversal(FTraversalCheckResult& OutResult);
 
+	// Ledge flow
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	bool StartLedgeGrab(float Direction = 0.f);
 
@@ -117,26 +114,25 @@ public:
 	void DropFromLedge();
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	TArray<UAnimMontage*> BuildValidTraversalMontages(const FTraversalChooserInputs& Inputs, FTraversalChooserOutputs& OutOutputs);
+	void PlayLedgeMontage(ETraversalAction Action);
+
+	// Montage selection
+	UFUNCTION(BlueprintCallable, Category = "Traversal")
+	TArray<UAnimMontage*> BuildValidTraversalMontages(const FTraversalChooserInputs& Inputs,FTraversalChooserOutputs& OutOutputs);
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	bool MotionMatchTraversal(const TArray<UAnimMontage*>& ValidMontages, UAnimMontage*& OutMontage, float& OutStartTime, float& OutPlayRate) const;
 
-	bool FindPoseSearchBranchInEndTime(const UAnimMontage* Montage,float& OutEndTime) const;
-
+	bool FindPoseSearchBranchInEndTime(const UAnimMontage* Montage, float& OutEndTime) const;
 	float GetStartTimeFromBranchInEnd(const UAnimMontage* Montage) const;
 
-	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	void PlaySelectedTraversalMontage(UAnimMontage* Montage);
-
-	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	void PlayLedgeMontage(ETraversalAction Action);
-
+public:
+	// Blueprint extension points
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal")
 	void BP_UpdatePoseSearchPlayerActor(AActor* PlayerActor);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal")
-	void BP_EvaluateTraversalChooser(const FTraversalChooserInputs& Inputs,  FTraversalChooserOutputs& Outputs, TArray<UAnimMontage*>& OutMontages);
+	void BP_EvaluateTraversalChooser(const FTraversalChooserInputs& Inputs, FTraversalChooserOutputs& Outputs, TArray<UAnimMontage*>& OutMontages);
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal")
 	void BP_MotionMatchTraversal(const TArray<UAnimMontage*>& ValidMontages, UAnimMontage*& OutMontage, float& OutStartTime, float& OutPlayRate) const;

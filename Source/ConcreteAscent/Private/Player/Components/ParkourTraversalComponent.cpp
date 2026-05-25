@@ -27,10 +27,6 @@ void UParkourTraversalComponent::BeginPlay()
 
 AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
 {
-	// TODO: 파쿠르 대상 탐색
-	// 1. 플레이어 전면부 탐지
-	// 2. AParkourObstacleBase 있는지 확인
-	// 3.AParkourObstacleBase 캐싱 및 리턴
 	if (!OwnerCharacter || !GetWorld())
 		return nullptr;
 
@@ -58,6 +54,7 @@ AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
 		return nullptr;
 	}
 
+	// 이후 ledge 계산에서 충돌 지점 정보가 필요하므로 마지막 Hit 정보를 함께 저장한다.
 	DetectedObstacle = Obstacle;
 	LastObstacleHit = Hit;
 
@@ -66,8 +63,7 @@ AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
 
 FTraversalChooserInputs UParkourTraversalComponent::EvaluateTraversal(AParkourObstacleBase* ObstacleBase)
 {
-	// TODO: Chooser용 Input struct 생성 후 내용 채워넣고 판단
-
+	// 장애물과 캐릭터 상태를 기반으로 Chooser에 전달할 입력값을 만든다.
 	CurrentTraversalResult = BuildTraversalCheckResult(ObstacleBase);
 	CurrentTraversalInputs = MakeChooserInputsFromCheckResult(CurrentTraversalResult);
 
@@ -76,20 +72,6 @@ FTraversalChooserInputs UParkourTraversalComponent::EvaluateTraversal(AParkourOb
 
 bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult)
 {
-
-	// TODO: 파쿠르 처리
-	// Step 1. 전면에 물체 확인
-	// Step 2. 물체에 해당하는 파쿠르 판별
-	// Step 3-1. Ledge면 Ledge 동작으로 넘어감
-	// Step 3-2. 아니면 MotionMatch로 Montage 판별
-	// Step 4. 모션워핑 좌표 수정
-	// Step 5. 몽타주 실행
-	//
-	// 현재 함수에서는 Step 1 ~ Step 3까지만 처리한다.
-	// Step 4. 모션워핑 좌표 수정
-	// Step 5. 몽타주 실행
-	// 은 Player 쪽 Jump 입력 흐름에서 처리한다.
-
 	UE_LOG(LogTemp, Warning, TEXT("Start"));
 
 	if (!OwnerCharacter)
@@ -97,14 +79,12 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 
 	OutResult = FTraversalCheckResult();
 
-	// Step 1. 전면에 물체 확인
 	UE_LOG(LogTemp, Warning, TEXT("Obstacle Finding"));
 
 	AParkourObstacleBase* Obstacle = DetectObstacle();
 	if (!Obstacle)
 		return false;
 
-	// Step 2. 물체에 해당하는 파쿠르 판별용 데이터 생성
 	UE_LOG(LogTemp, Warning, TEXT("Traversal Evaluate"));
 
 	CurrentTraversalInputs = EvaluateTraversal(Obstacle);
@@ -112,7 +92,7 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 	if (!CurrentTraversalInputs.bHasFrontLedge)
 		return false;
 
-		UE_LOG(LogTemp, Warning,
+	UE_LOG(LogTemp, Warning,
 		TEXT("ChooserInput | Action:%d MoveMode:%d Front:%d Back:%d Floor:%d Height:%.2f Depth:%.2f BackHeight:%.2f Speed:%.2f"),
 		static_cast<uint8>(CurrentTraversalInputs.ActionType),
 		static_cast<uint8>(CurrentTraversalInputs.MovementMode.GetValue()),
@@ -125,11 +105,10 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 		CurrentTraversalInputs.Speed
 	);
 
-	// Step 3. Chooser를 통해 가능한 Traversal Montage 목록과 ActionType 결정
+	// Chooser를 통해 현재 상황에 맞는 파쿠르 액션과 후보 몽타주 목록을 얻는다.
 	TArray<UAnimMontage*> ValidMontages =
 		BuildValidTraversalMontages(CurrentTraversalInputs, CurrentTraversalOutputs);
 
-	// Step 3-0. Chooser가 CurrentTraversalInputs.ActionType을 갱신했다고 가정.
 	CurrentTraversalInputs.ActionType = CurrentTraversalOutputs.ActionType;
 	CurrentTraversalResult.ActionType = CurrentTraversalOutputs.ActionType;
 
@@ -160,16 +139,14 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 	float SelectedStartTime = 0.f;
 	float SelectedPlayRate = 1.f;
 
-	// Step 3-1. LedgeGrab이면 Ledge 전용 Montage 선택
 	if (CurrentTraversalOutputs.ActionType == ETraversalAction::LedgeGrab)
 	{
 		if (!MotionData)
 			return false;
 
+		// LedgeGrab은 Chooser 후보가 아니라 MotionData에 지정된 전용 몽타주를 사용한다.
 		SelectedMontage = MotionData->GetLedgeGrabMontage();
 	}
-
-	// Step 3-2. 일반 Traversal이면 MotionMatch로 Montage 선택
 	else
 	{
 		if (ValidMontages.IsEmpty())
@@ -178,7 +155,12 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 			return false;
 		}
 
-		const bool bMotionMatched = MotionMatchTraversal(ValidMontages, SelectedMontage, SelectedStartTime, SelectedPlayRate);
+		const bool bMotionMatched = MotionMatchTraversal(
+			ValidMontages,
+			SelectedMontage,
+			SelectedStartTime,
+			SelectedPlayRate
+		);
 
 		if (!bMotionMatched)
 		{
@@ -187,34 +169,24 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 		}
 	}
 
-	// Step 3-3. Player가 실행할 수 있도록 Result에 Montage 정보 저장
-	const float BranchInStartTime =
-		GetStartTimeFromBranchInEnd(SelectedMontage);
+	// 실제 재생은 Character가 담당하므로, 여기서는 선택 결과만 TraversalResult에 담아 반환한다.
+	const float BranchInStartTime = GetStartTimeFromBranchInEnd(SelectedMontage);
 
 	CurrentTraversalResult.ChosenMontage = SelectedMontage;
 	CurrentTraversalResult.StartTime = BranchInStartTime;
 	CurrentTraversalResult.PlayRate = 1.f;
 
-	// Step 3-4. 최종 Traversal 결과 반환
 	OutResult = CurrentTraversalResult;
 	return true;
 }
 
 bool UParkourTraversalComponent::StartLedgeGrab(float Direction)
 {
-	// TODO: 매달리기 몽타주 실행
-	// MotionWarping으로 위치 조정
 	if (!OwnerCharacter)
 		return false;
 
+	// TODO: 난간 매달리기 전용 감지, 위치 보정, 몽타주 실행 흐름을 연결해야 한다.
 	CurrentTraversalResult.ActionType = ETraversalAction::LedgeGrab;
-
-	const FTransform WarpTarget =
-		BuildWarpTargetFromCheckResult(CurrentTraversalResult);
-
-	ApplyTraversalWarpTarget(WarpTarget);
-
-	PlayLedgeMontage(ETraversalAction::LedgeGrab);
 
 	return true;
 }
@@ -224,7 +196,7 @@ void UParkourTraversalComponent::MoveAlongLedge(float Direction)
 	if (!OwnerCharacter)
 		return;
 
-	// TODO: ALedgeObstacle로 가로 폭 확인하여 이동 가능한지 확인 후 몽타주 처리
+	// TODO: 현재 잡고 있는 난간의 좌우 이동 가능 범위를 확인한 뒤 이동 몽타주를 재생해야 한다.
 
 	return;
 }
@@ -234,7 +206,7 @@ void UParkourTraversalComponent::ClimbFromLedge()
 	if (!OwnerCharacter)
 		return;
 
-	// TODO: 위의 공간이 있는지 확인 후 기어 올라가기 수행
+	// TODO: 난간 위쪽 공간을 확인한 뒤 올라가기 몽타주를 재생해야 한다.
 
 	return;
 }
@@ -244,33 +216,32 @@ void UParkourTraversalComponent::DropFromLedge()
 	if (!OwnerCharacter)
 		return;
 
-	// TODO: 난간에서 떨어지기 수행
+	// TODO: 매달린 상태를 해제하고 낙하 상태로 전환해야 한다.
 
 	return;
 }
 
-TArray<UAnimMontage*> UParkourTraversalComponent::BuildValidTraversalMontages(const FTraversalChooserInputs& Inputs, FTraversalChooserOutputs& OutOutputs)
+TArray<UAnimMontage*> UParkourTraversalComponent::BuildValidTraversalMontages(
+	const FTraversalChooserInputs& Inputs,
+	FTraversalChooserOutputs& OutOutputs
+)
 {
 	TArray<UAnimMontage*> Result;
 
 	OutOutputs = FTraversalChooserOutputs();
 
-	// TODO: 파쿠르 모션을 Chooser를 통해 배열로 리턴
+	// Chooser 평가는 블루프린트에서 수행하고, C++은 결과만 받아서 사용한다.
 	BP_EvaluateTraversalChooser(Inputs, OutOutputs, Result);
 
 	return Result;
 }
 
-//FTransform UParkourTraversalComponent::BuildWarpTarget(const FTraversalChooserInputs& Inputs)
-//{
-//	if (!DetectedObstacle)
-//		return FTransform::Identity;
-//
-//	// MotionWarping 할 곳을 계산하여 반영
-//	return FTransform::Identity;
-//}
-
-bool UParkourTraversalComponent::MotionMatchTraversal(const TArray<UAnimMontage*>& ValidMontages, UAnimMontage*& OutMontage, float& OutStartTime, float& OutPlayRate) const
+bool UParkourTraversalComponent::MotionMatchTraversal(
+	const TArray<UAnimMontage*>& ValidMontages,
+	UAnimMontage*& OutMontage,
+	float& OutStartTime,
+	float& OutPlayRate
+) const
 {
 	OutMontage = nullptr;
 	OutStartTime = 0.f;
@@ -284,12 +255,15 @@ bool UParkourTraversalComponent::MotionMatchTraversal(const TArray<UAnimMontage*
 	return OutMontage != nullptr;
 }
 
-bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(const UAnimMontage* Montage, float& OutEndTime) const
+bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(
+	const UAnimMontage* Montage,
+	float& OutEndTime
+) const
 {
 	OutEndTime = 0.f;
 
 	if (!Montage)
-	{ 
+	{
 		return false;
 	}
 
@@ -304,8 +278,7 @@ bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(const UAnimMontag
 			continue;
 		}
 
-		// PoseSearch 모듈 include 문제를 피하려고 이름 기반으로 검사.
-		// 클래스명은 보통 AnimNotifyState_PoseSearchBranchIn 계열이다.
+		// PoseSearch BranchIn NotifyState를 직접 타입 참조하지 않고 클래스명으로 확인한다.
 		const FString NotifyClassName = NotifyState->GetClass()->GetName();
 		if (!NotifyClassName.Contains(TEXT("PoseSearchBranchIn")))
 		{
@@ -320,7 +293,7 @@ bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(const UAnimMontag
 			continue;
 		}
 
-		// 여러 개 있으면 가장 앞의 BranchIn을 사용
+		// 여러 BranchIn 구간이 있을 경우 가장 앞에 있는 구간을 기준으로 사용한다.
 		if (StartTime < EarliestStartTime)
 		{
 			EarliestStartTime = StartTime;
@@ -345,12 +318,6 @@ float UParkourTraversalComponent::GetStartTimeFromBranchInEnd(const UAnimMontage
 		0.f,
 		BranchInEndTime - BranchInEndStartOffset
 	);
-}
-
-void UParkourTraversalComponent::PlaySelectedTraversalMontage(UAnimMontage* Montage)
-{
-	if (OwnerCharacter && Montage)
-		OwnerCharacter->PlayTraversalMontage(Montage);
 }
 
 void UParkourTraversalComponent::PlayLedgeMontage(ETraversalAction Action)
@@ -379,13 +346,14 @@ void UParkourTraversalComponent::PlayLedgeMontage(ETraversalAction Action)
 	default:
 		break;
 	}
-
-	// TODO: MotionWarping 수행
-
-	PlaySelectedTraversalMontage(Montage);
 }
 
-bool UParkourTraversalComponent::CapsuleSweep(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const
+bool UParkourTraversalComponent::CapsuleSweep(
+	const FVector& Start,
+	const FVector& End,
+	ECollisionChannel Channel,
+	FHitResult& OutHit
+) const
 {
 	if (!OwnerCharacter || !GetWorld())
 		return false;
@@ -413,7 +381,12 @@ bool UParkourTraversalComponent::CapsuleSweep(const FVector& Start, const FVecto
 	);
 }
 
-bool UParkourTraversalComponent::HasCapsuleRoom(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const
+bool UParkourTraversalComponent::HasCapsuleRoom(
+	const FVector& Start,
+	const FVector& End,
+	ECollisionChannel Channel,
+	FHitResult& OutHit
+) const
 {
 	const bool bHit = CapsuleSweep(Start, End, Channel, OutHit);
 
@@ -423,7 +396,9 @@ bool UParkourTraversalComponent::HasCapsuleRoom(const FVector& Start, const FVec
 	return !(OutHit.bBlockingHit || OutHit.bStartPenetrating);
 }
 
-FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(AParkourObstacleBase* ObstacleBase)
+FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
+	AParkourObstacleBase* ObstacleBase
+)
 {
 	FTraversalCheckResult Result;
 
@@ -447,8 +422,7 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 	float ObstacleHeight = 0.f;
 	float ObstacleDepth = 0.f;
 
-	// Step 3.1
-	// Obstacle에게 자신의 TraversalBounds 기준 Ledge 위치, Normal, 높이, 깊이 정보를 요청한다.
+	// 장애물 Bounds 기준으로 앞/뒤 Ledge 위치와 Normal 정보를 가져온다.
 	const bool bGotLedgeData = ObstacleBase->GetTraversalLedgeData(
 		LastObstacleHit,
 		ActorLocation,
@@ -463,8 +437,6 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 	if (!bGotLedgeData)
 		return Result;
 
-	// Step 3.1-1
-	// Obstacle이 계산한 값을 Result에 그대로 적용한다.
 	Result.bHasFrontLedge = true;
 	Result.bHasBackLedge = true;
 
@@ -474,6 +446,7 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 	Result.BackLedgeLocation = BackLedgeLocation;
 	Result.BackLedgeNormal = BackLedgeNormal.GetSafeNormal();
 
+	// Chooser에서 사용할 장애물 높이는 캐릭터 캡슐 바닥 기준으로 계산한다.
 	const FVector CapsuleLocation = CapsuleComp->GetComponentLocation();
 	const float CapsuleBottomZ = CapsuleLocation.Z - CapsuleHalfHeight;
 	Result.ObstacleHeight = FMath::Max(0.f, Result.FrontLedgeLocation.Z - CapsuleBottomZ);
@@ -481,8 +454,7 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 
 	Result.HitComponent = LastObstacleHit.GetComponent();
 
-	// Step 3.2
-	// Front Ledge 앞쪽에 캐릭터 캡슐이 들어갈 공간이 있는지 확인.
+	// FrontLedge 앞쪽에 캐릭터 캡슐이 들어갈 수 있는 공간이 있는지 확인한다.
 	const FVector FrontRoomLocation =
 		Result.FrontLedgeLocation
 		+ Result.FrontLedgeNormal * (CapsuleRadius + LedgeRoomPadding)
@@ -504,12 +476,7 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 		return Result;
 	}
 
-	// Step 3.3
-	// ObstacleHeight는 Obstacle이 이미 계산해서 넘겨준 값을 사용한다.
-	// 따라서 ActorTopLocation 기준으로 다시 계산하지 않는다.
-
-	// Step 3.4
-	// Back Ledge 뒤쪽에 캐릭터 캡슐이 들어갈 공간이 있는지 확인.
+	// BackLedge까지 이동하는 경로에 캐릭터 캡슐이 들어갈 수 있는지 확인한다.
 	const FVector BackRoomLocation =
 		Result.BackLedgeLocation
 		+ Result.BackLedgeNormal * (CapsuleRadius + LedgeRoomPadding)
@@ -523,9 +490,6 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 		TopSweepHit
 	);
 
-	// Step 3.5
-	// Back Ledge까지 갈 수 없는 경우, BackLedge와 BackFloor는 사용할 수 없는 것으로 처리한다.
-	// ObstacleDepth 자체는 Obstacle이 제공한 실제 깊이 값을 유지한다.
 	if (!bHasTopRoom)
 	{
 		Result.bHasBackLedge = false;
@@ -534,9 +498,7 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 		return Result;
 	}
 
-	// Step 3.6
-	// Back Ledge 뒤쪽 아래에 바닥이 있는지 확인.
-	// BackFloor는 장애물 자체 정보가 아니라 월드 충돌과 캐릭터 캡슐 기준으로 판단한다.
+	// 장애물 뒤쪽 아래에 착지 가능한 바닥이 있는지 확인한다.
 	const FVector FloorTraceStart =
 		BackRoomLocation + FVector(0.f, 0.f, FloorCheckExtraDistance);
 
@@ -564,18 +526,18 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(APar
 
 	Result.bHasBackFloor = true;
 
-	// BackFloor는 착지할 바닥 표면 위치로 저장한다.
-// FloorHit.Location은 캡슐 중심에 가까우므로, Motion Warping 기준이 높게 잡힐 수 있다.
+	// BackFloor는 모션워핑의 착지 기준으로 사용할 실제 바닥 표면 위치다.
 	Result.BackFloorLocation = FloorHit.ImpactPoint;
 
-	// 높이 계산용.
-	// BackLedgeHeight는 실제 바닥 표면 기준으로 계산한다.
+	// BackLedgeHeight는 장애물 뒤쪽 ledge와 실제 착지 바닥 사이의 높이 차이다.
 	Result.BackLedgeHeight = FMath::Abs(Result.BackLedgeLocation.Z - FloorHit.ImpactPoint.Z);
 
 	return Result;
 }
 
-FTraversalChooserInputs UParkourTraversalComponent::MakeChooserInputsFromCheckResult(const FTraversalCheckResult& CheckResult) const
+FTraversalChooserInputs UParkourTraversalComponent::MakeChooserInputsFromCheckResult(
+	const FTraversalCheckResult& CheckResult
+) const
 {
 	FTraversalChooserInputs Inputs;
 
@@ -595,66 +557,9 @@ FTraversalChooserInputs UParkourTraversalComponent::MakeChooserInputsFromCheckRe
 
 		if (const UCharacterMovementComponent* MoveComp = OwnerCharacter->GetCharacterMovement())
 			Inputs.MovementMode = MoveComp->MovementMode;
+
 		Inputs.Gait = OwnerCharacter->GetGait();
 	}
 
 	return Inputs;
-}
-
-FTransform UParkourTraversalComponent::BuildWarpTargetFromCheckResult(const FTraversalCheckResult& CheckResult) const
-{
-	if (!OwnerCharacter)
-		return FTransform::Identity;
-
-	FVector TargetLocation = CheckResult.FrontLedgeLocation;
-	FVector TargetNormal = CheckResult.FrontLedgeNormal;
-
-	switch (CheckResult.ActionType)
-	{
-	case ETraversalAction::Vault:
-	case ETraversalAction::Hurdle:
-		// 넘어가는 계열은 보통 Back Ledge 또는 Back Floor 쪽을 목표로 둠.
-		if (CheckResult.bHasBackFloor)
-		{
-			TargetLocation = CheckResult.BackFloorLocation;
-			TargetNormal = CheckResult.BackLedgeNormal;
-		}
-		else if (CheckResult.bHasBackLedge)
-		{
-			TargetLocation = CheckResult.BackLedgeLocation;
-			TargetNormal = CheckResult.BackLedgeNormal;
-		}
-		break;
-
-	case ETraversalAction::Mantle:
-	case ETraversalAction::LedgeGrab:
-		// 매달리기/기어오르기 계열은 Front Ledge 기준.
-		TargetLocation = CheckResult.FrontLedgeLocation;
-		TargetNormal = CheckResult.FrontLedgeNormal;
-		break;
-
-	default:
-		break;
-	}
-
-	const FRotator TargetRotation = (-TargetNormal).Rotation();
-
-	return FTransform(TargetRotation, TargetLocation, FVector::OneVector);
-}
-
-void UParkourTraversalComponent::ApplyTraversalWarpTarget(const FTransform& WarpTarget)
-{
-	if (!OwnerCharacter)
-		return;
-
-	UMotionWarpingComponent* MotionWarpingComp =
-		OwnerCharacter->FindComponentByClass<UMotionWarpingComponent>();
-
-	if (!MotionWarpingComp)
-		return;
-
-	MotionWarpingComp->AddOrUpdateWarpTargetFromTransform(
-		TraversalWarpTargetName,
-		WarpTarget
-	);
 }

@@ -55,9 +55,6 @@ void AConcreteAscentCharacter::BeginPlay()
 	ParkourTraversalComponent = FindComponentByClass<UParkourTraversalComponent>();
 	if (!ParkourTraversalComponent)
 		UE_LOG(LogTemp, Warning, TEXT("ParkourTraversalComponent is not attached to this character."));
-
-	
-	bIsGrounded = GetCharacterMovement() ? GetCharacterMovement()->IsMovingOnGround() : true;
 }
 
 void AConcreteAscentCharacter::Tick(float DeltaTime)
@@ -65,9 +62,6 @@ void AConcreteAscentCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	UpdateGait();
-
-	if (UCharacterMovementComponent* AscentCharacterMovement = GetCharacterMovement())
-		bIsGrounded = AscentCharacterMovement->IsMovingOnGround();
 }
 
 void AConcreteAscentCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -107,8 +101,6 @@ void AConcreteAscentCharacter::Landed(const FHitResult& Hit)
 	Super::Landed(Hit);
 
 	LastLandingVerticalSpeed = LandingSpeed;
-
-	bIsGrounded = true;
 	bJustLanded = true;
 
 	GetWorldTimerManager().ClearTimer(JustLandedTimerHandle);
@@ -162,20 +154,16 @@ void AConcreteAscentCharacter::ClearJustLanded()
 
 void AConcreteAscentCharacter::BeginTraversal()
 {
-	// Step 0. Traversal 시작 상태로 전환
+	// 파쿠르 동작 중에는 일반 이동 입력과 CharacterMovement의 기본 이동 처리를 잠시 막는다.
 	bIsTraversing = true;
 	bCanMove = false;
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
-		// Step 0-1. 기존 MovementMode 저장
-		PreviousMovementMode = MoveComp->MovementMode;
-		PreviousCustomMovementMode = MoveComp->CustomMovementMode;
-
-		// Step 0-2. 기존 이동 속도 제거
+		// 기존 이동 관성을 제거해 파쿠르 몽타주와 모션워핑이 안정적으로 적용되도록 한다.
 		MoveComp->StopMovementImmediately();
 
-		// Step 0-3. Traversal 중에는 Walking의 바닥 보정/중력 영향을 피하기 위해 Flying 사용
+		// 파쿠르 중에는 Walking의 바닥 보정과 중력 영향을 피하기 위해 Flying 모드를 사용한다.
 		MoveComp->SetMovementMode(MOVE_Flying);
 	}
 
@@ -193,7 +181,7 @@ void AConcreteAscentCharacter::EndTraversal()
 	bIsTraversing = false;
 	bCanMove = true;
 
-	// 파쿠르 중 무시했던 장애물 컴포넌트 복구
+	// 파쿠르 중 임시로 무시했던 장애물 충돌을 복구한다.
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		if (CurrentTraversalResult.HitComponent)
@@ -226,7 +214,7 @@ void AConcreteAscentCharacter::EndTraversal()
 
 void AConcreteAscentCharacter::OnTraversalMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	// Step 6. Traversal Montage가 끝나거나 중단되면 MovementMode 복구
+	// 몽타주가 끝나거나 중단되면 파쿠르 상태를 정리한다.
 	EndTraversal();
 }
 
@@ -280,8 +268,6 @@ void AConcreteAscentCharacter::StopSprint(const FInputActionValue& InputValue)
 
 void AConcreteAscentCharacter::Jump()
 {
-	// TODO: 파쿠르 관련 동작 처리
-	// 파쿠르 미수행 시 점프 동작
 	UE_LOG(LogTemp, Warning, TEXT("Jump"));
 
 	if (ParkourTraversalComponent)
@@ -307,12 +293,20 @@ void AConcreteAscentCharacter::Jump()
 			EndTraversal();
 		}
 	}
+
+	// 파쿠르 동작을 시작하지 못한 경우 일반 점프를 수행한다.
 	Super::Jump();
 }
 
 void AConcreteAscentCharacter::RespawnAt(const FTransform& RespawnTransform)
 {
-	SetActorLocationAndRotation(RespawnTransform.GetLocation(), RespawnTransform.GetRotation().Rotator(), false, nullptr, ETeleportType::TeleportPhysics);
+	SetActorLocationAndRotation(
+		RespawnTransform.GetLocation(),
+		RespawnTransform.GetRotation().Rotator(),
+		false,
+		nullptr,
+		ETeleportType::TeleportPhysics
+	);
 
 	if (UCharacterMovementComponent* AscentCharacterMovement = GetCharacterMovement())
 	{
@@ -323,16 +317,9 @@ void AConcreteAscentCharacter::RespawnAt(const FTransform& RespawnTransform)
 	GetWorldTimerManager().ClearTimer(JustLandedTimerHandle);
 
 	bCanMove = true;
-	bIsGrounded = true;
 	bIsHanging = false;
 	bJustLanded = false;
 	LastLandingVerticalSpeed = 0.f;
-}
-
-void AConcreteAscentCharacter::SetMovementState(EMovementState NewState)
-{
-	// TODO: 플레이어 상태에 따라 bool 갱신
-	return;
 }
 
 void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckResult& TraversalResult)
@@ -342,8 +329,7 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 		return;
 	}
 
-	// 1. 기본 진행 방향은 FrontLedge -> BackLedge 방향으로 잡음.
-	// 이게 가장 안정적인 "넘어가는 방향"이다.
+	// 기본 진행 방향은 FrontLedge에서 BackLedge로 향하는 방향을 사용한다.
 	FVector TraversalForward =
 		TraversalResult.BackLedgeLocation - TraversalResult.FrontLedgeLocation;
 
@@ -351,13 +337,13 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 
 	if (!TraversalForward.Normalize())
 	{
-		// BackLedge가 없거나 두 위치가 같으면 FrontLedgeNormal 기반으로 fallback
+		// BackLedge 정보가 없거나 두 위치가 거의 같으면 FrontLedgeNormal을 기준으로 보정한다.
 		TraversalForward = -TraversalResult.FrontLedgeNormal.GetSafeNormal();
 		TraversalForward.Z = 0.f;
 		TraversalForward.Normalize();
 	}
 
-	// 2. 혹시 Front/Back이 뒤집혔을 때 현재 캐릭터 전방과 비교해서 보정
+	// 계산된 진행 방향이 현재 캐릭터 전방과 반대라면 뒤집어서 보정한다.
 	FVector ActorForward = GetActorForwardVector();
 	ActorForward.Z = 0.f;
 	ActorForward.Normalize();
@@ -378,16 +364,10 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 		TraversalForward = FVector::ForwardVector;
 	}
 
-	// 3. FrontLedge WarpTarget
 	if (TraversalResult.bHasFrontLedge)
 	{
 		FVector FrontTargetLocation =
 			TraversalResult.FrontLedgeLocation + FVector(0.f, 0.f, 0.5f);
-
-		/*if (const UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
-		{
-			FrontTargetLocation.Z -= CapsuleComp->GetScaledCapsuleHalfHeight();
-		}*/
 
 		FVector FrontOutward = TraversalResult.FrontLedgeNormal;
 		FrontOutward.Z = 0.f;
@@ -397,6 +377,7 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 			FrontOutward = -TraversalForward;
 		}
 
+		// FrontLedge 타겟이 장애물 안쪽으로 들어가지 않도록 바깥 방향으로 약간 밀어낸다.
 		FrontTargetLocation += FrontOutward * FrontLedgeOutwardOffset;
 
 		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(
@@ -412,18 +393,13 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 		MotionWarpingComponent->RemoveWarpTarget(FrontLedgeWarpTargetName);
 	}
 
-	// 4. BackLedge는 Hurdle / Vault에서만 사용
+	// BackLedge 타겟은 장애물을 넘어가는 동작에서만 사용한다.
 	const bool bNeedsBackLedge =
 		TraversalResult.ActionType == ETraversalAction::Hurdle ||
 		TraversalResult.ActionType == ETraversalAction::Vault;
 
 	FVector BackLedgeTargetLocation =
 		TraversalResult.BackLedgeLocation + FVector(0.f, 0.f, 0.5f);
-
-	/*if (const UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
-	{
-		BackLedgeTargetLocation.Z -= CapsuleComp->GetScaledCapsuleHalfHeight();
-	}*/
 
 	if (bNeedsBackLedge && TraversalResult.bHasBackLedge)
 	{
@@ -440,7 +416,7 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 		MotionWarpingComponent->RemoveWarpTarget(BackLedgeWarpTargetName);
 	}
 
-	// 5. BackFloor는 Hurdle에서만 사용
+	// BackFloor 타겟은 Hurdle처럼 장애물 뒤쪽 바닥까지 이어지는 동작에서 사용한다.
 	const bool bNeedsBackFloor =
 		TraversalResult.ActionType == ETraversalAction::Hurdle;
 
@@ -479,9 +455,7 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 				BackFloorDirection = TraversalForward;
 			}
 
-			// 원본 BP 방식:
-			// BackLedge 위치에서 애니메이션상 BackLedge -> BackFloor 추가 이동거리만큼
-			// 뒤쪽으로 민 뒤, Z는 실제 바닥 위치를 사용한다.
+			// 애니메이션상의 BackLedge-BackFloor 거리 차이를 실제 바닥 타겟 위치에 반영한다.
 			const FVector BackFloorXYLocation =
 				TraversalResult.BackLedgeLocation
 				+ BackFloorDirection * ExtraFloorDistance;
@@ -517,22 +491,17 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 
 float AConcreteAscentCharacter::PlayTraversalMontage(UAnimMontage* Montage, float PlayRate, float StartTime)
 {
-	// Step 5. 몽타주 실행
-	// Step 5-0. Montage 유효성 확인
 	if (!Montage)
 		return 0.f;
 
-	// Step 5-1. Mesh 유효성 확인
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	if (!MeshComp)
 		return 0.f;
 
-	// Step 5-2. AnimInstance 유효성 확인
 	UAnimInstance* AnimInstance = MeshComp->GetAnimInstance();
 	if (!AnimInstance)
 		return 0.f;
 
-	// Step 5-3. PlayRate와 StartTime을 반영하여 Montage 재생
 	const float MontageLength = AnimInstance->Montage_Play(
 		Montage,
 		PlayRate,
@@ -543,7 +512,7 @@ float AConcreteAscentCharacter::PlayTraversalMontage(UAnimMontage* Montage, floa
 	if (MontageLength <= 0.f)
 		return 0.f;
 
-	// Step 5-4. Traversal Montage 종료 시 MovementMode 복구
+	// 파쿠르 몽타주가 끝나면 캐릭터 상태와 MovementMode를 복구한다.
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &AConcreteAscentCharacter::OnTraversalMontageEnded);
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);

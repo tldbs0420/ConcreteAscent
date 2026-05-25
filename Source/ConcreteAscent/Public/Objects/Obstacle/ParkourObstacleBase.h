@@ -19,6 +19,7 @@ public:
 	AParkourObstacleBase();
 
 protected:
+	// Components
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<USceneComponent> SceneRoot;
 
@@ -28,6 +29,7 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UBoxComponent> TraversalBounds;
 
+	// Cached traversal values
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal")
 	float Height = 100.f;
 
@@ -37,14 +39,34 @@ protected:
 public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
+public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Traversal")
-	bool GetTraversalLedgeData(const FHitResult& HitResult,const FVector& ActorLocation, FVector& OutFrontLedgeLocation, FVector& OutFrontLedgeNormal, FVector& OutBackLedgeLocation, FVector& OutBackLedgeNormal, float& OutObstacleHeight, float& OutObstacleDepth) const;
-	virtual bool GetTraversalLedgeData_Implementation(const FHitResult& HitResult, const FVector& ActorLocation, FVector& OutFrontLedgeLocation, FVector& OutFrontLedgeNormal, FVector& OutBackLedgeLocation, FVector& OutBackLedgeNormal, float& OutObstacleHeight, float& OutObstacleDepth) const;
+	bool GetTraversalLedgeData(
+		const FHitResult& HitResult,
+		const FVector& ActorLocation,
+		FVector& OutFrontLedgeLocation,
+		FVector& OutFrontLedgeNormal,
+		FVector& OutBackLedgeLocation,
+		FVector& OutBackLedgeNormal,
+		float& OutObstacleHeight,
+		float& OutObstacleDepth
+	) const;
 
+	virtual bool GetTraversalLedgeData_Implementation(
+		const FHitResult& HitResult,
+		const FVector& ActorLocation,
+		FVector& OutFrontLedgeLocation,
+		FVector& OutFrontLedgeNormal,
+		FVector& OutBackLedgeLocation,
+		FVector& OutBackLedgeNormal,
+		float& OutObstacleHeight,
+		float& OutObstacleDepth
+	) const;
+
+public:
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	float GetHeight() const { return Height; }
 
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	float GetThickness() const { return Thickness; }
-
 };
