@@ -29,8 +29,3 @@ void UConcreteAscentAnimInstance::GetGaitFromPlayer()
 		return;
 	Gait = OwnerCharacter->GetGait();
 }
-
-UPoseSearchDatabase* UConcreteAscentAnimInstance::SelectLocomotionDatabase() const
-{
-	return MotionData ? MotionData->GetLocomotionDatabase(OwnerCharacter->GetCharacterMovement()->MovementMode) : nullptr;
-}

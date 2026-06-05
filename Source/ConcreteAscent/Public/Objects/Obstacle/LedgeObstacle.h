@@ -13,17 +13,15 @@ UCLASS()
 class CONCRETEASCENT_API ALedgeObstacle : public AParkourObstacleBase
 {
 	GENERATED_BODY()
-	
-public:
-	ALedgeObstacle();
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Traversal")
 	float HorizontalLength = 200.f;
 
 public:
-	virtual void OnConstruction(const FTransform& Transform) override;
-
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	float GetHorizontalLength() const { return HorizontalLength; }
+
+	UFUNCTION(BlueprintCallable, Category = "Traversal|Ledge")
+	bool GetLedgeMoveSegment(const FVector& FrontNormal, FVector& OutCenter, FVector& OutRight, float& OutHalfLength) const;
 };

@@ -30,6 +30,9 @@ protected:
 	TObjectPtr<ACheckpointActor> CurrentCheckpoint;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Game")
+	FTransform InitialRespawnTransform;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Game")
 	bool bGameCleared = false;
 
 public:

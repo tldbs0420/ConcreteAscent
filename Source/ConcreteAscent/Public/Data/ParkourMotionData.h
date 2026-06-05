@@ -8,7 +8,6 @@
 #include "ParkourMotionData.generated.h"
 
 class UAnimMontage;
-class UPoseSearchDatabase;
 
 /**
  * 
@@ -19,12 +18,6 @@ class CONCRETEASCENT_API UParkourMotionData : public UDataAsset
 	GENERATED_BODY()
 	
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Motion Matching")
-	TObjectPtr<UPoseSearchDatabase> MoveDatabase;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Motion Matching")
-	TObjectPtr<UPoseSearchDatabase> JumpDatabase;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ledge")
 	TObjectPtr<UAnimMontage> LedgeGrabMontage;
 
@@ -37,12 +30,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ledge")
 	TObjectPtr<UAnimMontage> LedgeClimbUpMontage;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ledge")
-	TObjectPtr<UAnimMontage> LedgeDropMontage;
-
-	UFUNCTION(BlueprintPure, Category = "Motion Matching")
-	UPoseSearchDatabase* GetLocomotionDatabase(EMovementMode State) const;
-
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	UAnimMontage* GetLedgeGrabMontage() const { return LedgeGrabMontage; }
 
@@ -51,7 +38,4 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Traversal")
 	UAnimMontage* GetLedgeClimbUpMontage() const { return LedgeClimbUpMontage; }
-
-	UFUNCTION(BlueprintPure, Category = "Traversal")
-	UAnimMontage* GetLedgeDropMontage() const { return LedgeDropMontage; }
 };

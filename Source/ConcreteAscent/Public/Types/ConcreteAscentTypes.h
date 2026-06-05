@@ -43,7 +43,6 @@ enum class ETraversalAction : uint8
 	LedgeClimbUp UMETA(DisplayName = "LedgeClimbUp"),
 	LedgeMoveLeft UMETA(DisplayName = "LedgeMoveLeft"),
 	LedgeMoveRight UMETA(DisplayName = "LedgeMoveRight"),
-	LedgeDrop UMETA(DisplayName = "LedgeDrop")
 };
 
 USTRUCT(BlueprintType)

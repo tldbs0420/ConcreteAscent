@@ -16,6 +16,9 @@ void AConcreteAscentGameModeBase::BeginPlay()
 	Super::BeginPlay();
 
 	PlayerCharacter = Cast<AConcreteAscentCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
+
+	if (PlayerCharacter)
+		InitialRespawnTransform = PlayerCharacter->GetActorTransform();
 }
 
 void AConcreteAscentGameModeBase::SetCurrentCheckpoint(ACheckpointActor* NewCheckpoint)
@@ -49,5 +52,5 @@ FTransform AConcreteAscentGameModeBase::GetRespawnTransform()
 	if (CurrentCheckpoint)
 		return CurrentCheckpoint->GetRespawnTransform();
 
-	return FTransform::Identity;
+	return InitialRespawnTransform;
 }

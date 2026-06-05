@@ -8,14 +8,17 @@
 #include "Data/ParkourMotionData.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "MotionWarpingComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimTypes.h"
-#include "PoseSearch/PoseSearchAnimNotifies.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "TimerManager.h"
 
 UParkourTraversalComponent::UParkourTraversalComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 void UParkourTraversalComponent::BeginPlay()
@@ -23,6 +26,28 @@ void UParkourTraversalComponent::BeginPlay()
 	Super::BeginPlay();
 
 	OwnerCharacter = Cast<AConcreteAscentCharacter>(GetOwner());
+}
+
+void UParkourTraversalComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!bIsLedgeMoving || !OwnerCharacter || !CurrentLedge)
+		return;
+
+	LedgeMoveElapsedTime += DeltaTime;
+
+	const float Alpha = LedgeMoveDuration > KINDA_SMALL_NUMBER ? FMath::Clamp(LedgeMoveElapsedTime / LedgeMoveDuration, 0.f, 1.f) : 1.f;
+	CurrentLedgeOffset = FMath::Lerp(LedgeMoveStartOffset, LedgeMoveTargetOffset, Alpha);
+
+	const FVector NewLedgePoint = CurrentLedgeCenter + CurrentLedgeRight * CurrentLedgeOffset;
+	OwnerCharacter->SetHangLocationFromLedgePoint(NewLedgePoint, CurrentLedgeNormal);
+
+	if (Alpha >= 1.f)
+	{
+		CurrentLedgeOffset = LedgeMoveTargetOffset;
+		FinishLedgeMove();
+	}
 }
 
 AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
@@ -41,7 +66,6 @@ AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
 
 	if (!bHit || !Hit.bBlockingHit || !Hit.GetActor())
 	{
-		DetectedObstacle = nullptr;
 		LastObstacleHit = FHitResult();
 		return nullptr;
 	}
@@ -49,16 +73,14 @@ AParkourObstacleBase* UParkourTraversalComponent::DetectObstacle()
 	AParkourObstacleBase* Obstacle = Cast<AParkourObstacleBase>(Hit.GetActor());
 	if (!Obstacle)
 	{
-		DetectedObstacle = nullptr;
 		LastObstacleHit = FHitResult();
 		return nullptr;
 	}
 
 	// 이후 ledge 계산에서 충돌 지점 정보가 필요하므로 마지막 Hit 정보를 함께 저장한다.
-	DetectedObstacle = Obstacle;
 	LastObstacleHit = Hit;
 
-	return DetectedObstacle;
+	return Obstacle;
 }
 
 FTraversalChooserInputs UParkourTraversalComponent::EvaluateTraversal(AParkourObstacleBase* ObstacleBase)
@@ -72,59 +94,33 @@ FTraversalChooserInputs UParkourTraversalComponent::EvaluateTraversal(AParkourOb
 
 bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Start"));
-
 	if (!OwnerCharacter)
 		return false;
 
 	OutResult = FTraversalCheckResult();
 
-	UE_LOG(LogTemp, Warning, TEXT("Obstacle Finding"));
-
 	AParkourObstacleBase* Obstacle = DetectObstacle();
 	if (!Obstacle)
 		return false;
 
-	UE_LOG(LogTemp, Warning, TEXT("Traversal Evaluate"));
+	// LedgeObstacle은 지상 파쿠르 흐름에서 처리하지 않는다.
+	// 지상 Space는 일반 점프로 보내고,
+	// 공중 Space에서 TryAirLedgeGrab()으로만 매달리기를 처리한다.
+	if (Obstacle->IsA<ALedgeObstacle>())
+		return false;
 
 	CurrentTraversalInputs = EvaluateTraversal(Obstacle);
 
 	if (!CurrentTraversalInputs.bHasFrontLedge)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Traversal failed: No front ledge."));
 		return false;
+	}
 
-	UE_LOG(LogTemp, Warning,
-		TEXT("ChooserInput | Action:%d MoveMode:%d Front:%d Back:%d Floor:%d Height:%.2f Depth:%.2f BackHeight:%.2f Speed:%.2f"),
-		static_cast<uint8>(CurrentTraversalInputs.ActionType),
-		static_cast<uint8>(CurrentTraversalInputs.MovementMode.GetValue()),
-		CurrentTraversalInputs.bHasFrontLedge,
-		CurrentTraversalInputs.bHasBackLedge,
-		CurrentTraversalInputs.bHasBackFloor,
-		CurrentTraversalInputs.ObstacleHeight,
-		CurrentTraversalInputs.ObstacleDepth,
-		CurrentTraversalInputs.BackLedgeHeight,
-		CurrentTraversalInputs.Speed
-	);
-
-	// Chooser를 통해 현재 상황에 맞는 파쿠르 액션과 후보 몽타주 목록을 얻는다.
-	TArray<UAnimMontage*> ValidMontages =
-		BuildValidTraversalMontages(CurrentTraversalInputs, CurrentTraversalOutputs);
+	TArray<UAnimMontage*> ValidMontages = BuildValidTraversalMontages(CurrentTraversalInputs, CurrentTraversalOutputs);
 
 	CurrentTraversalInputs.ActionType = CurrentTraversalOutputs.ActionType;
 	CurrentTraversalResult.ActionType = CurrentTraversalOutputs.ActionType;
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("Traversal | Action:%d MoveMode:%d Front:%d Back:%d Floor:%d Height:%.2f Depth:%.2f BackHeight:%.2f Speed:%.2f Montages:%d"),
-		static_cast<uint8>(CurrentTraversalOutputs.ActionType),
-		static_cast<uint8>(CurrentTraversalInputs.MovementMode.GetValue()),
-		CurrentTraversalInputs.bHasFrontLedge,
-		CurrentTraversalInputs.bHasBackLedge,
-		CurrentTraversalInputs.bHasBackFloor,
-		CurrentTraversalInputs.ObstacleHeight,
-		CurrentTraversalInputs.ObstacleDepth,
-		CurrentTraversalInputs.BackLedgeHeight,
-		CurrentTraversalInputs.Speed,
-		ValidMontages.Num()
-	);
 
 	if (CurrentTraversalOutputs.ActionType == ETraversalAction::None)
 	{
@@ -132,83 +128,204 @@ bool UParkourTraversalComponent::StartTraversal(FTraversalCheckResult& OutResult
 		return false;
 	}
 
-	if (OwnerCharacter)
-		BP_UpdatePoseSearchPlayerActor(OwnerCharacter);
-
-	UAnimMontage* SelectedMontage = nullptr;
-	float SelectedStartTime = 0.f;
-	float SelectedPlayRate = 1.f;
-
-	if (CurrentTraversalOutputs.ActionType == ETraversalAction::LedgeGrab)
+	if (ValidMontages.IsEmpty())
 	{
-		if (!MotionData)
-			return false;
-
-		// LedgeGrab은 Chooser 후보가 아니라 MotionData에 지정된 전용 몽타주를 사용한다.
-		SelectedMontage = MotionData->GetLedgeGrabMontage();
-	}
-	else
-	{
-		if (ValidMontages.IsEmpty())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Traversal failed: No valid montages."));
-			return false;
-		}
-
-		const bool bMotionMatched = MotionMatchTraversal(
-			ValidMontages,
-			SelectedMontage,
-			SelectedStartTime,
-			SelectedPlayRate
-		);
-
-		if (!bMotionMatched)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Traversal failed: Motion match returned null."));
-			return false;
-		}
+		UE_LOG(LogTemp, Warning, TEXT("Traversal failed: No valid montages."));
+		return false;
 	}
 
-	// 실제 재생은 Character가 담당하므로, 여기서는 선택 결과만 TraversalResult에 담아 반환한다.
-	const float BranchInStartTime = GetStartTimeFromBranchInEnd(SelectedMontage);
+	BP_UpdatePoseSearchPlayerActor(OwnerCharacter);
+
+	UAnimMontage* SelectedMontage = ValidMontages[0];
+
+	float StartTime = 0.f;
+	FindPoseSearchBranchInEndTime(SelectedMontage, StartTime);
 
 	CurrentTraversalResult.ChosenMontage = SelectedMontage;
-	CurrentTraversalResult.StartTime = BranchInStartTime;
+	CurrentTraversalResult.StartTime = StartTime;
 	CurrentTraversalResult.PlayRate = 1.f;
 
 	OutResult = CurrentTraversalResult;
 	return true;
 }
 
-bool UParkourTraversalComponent::StartLedgeGrab(float Direction)
+bool UParkourTraversalComponent::TryAirLedgeGrab(FTraversalCheckResult& OutResult)
 {
+	OutResult = FTraversalCheckResult();
+
 	if (!OwnerCharacter)
 		return false;
 
-	// TODO: 난간 매달리기 전용 감지, 위치 보정, 몽타주 실행 흐름을 연결해야 한다.
+	const UCharacterMovementComponent* MovementComp = OwnerCharacter->GetCharacterMovement();
+	if (!MovementComp || !MovementComp->IsFalling())
+		return false;
+
+	AParkourObstacleBase* Obstacle = DetectObstacle();
+	if (!Obstacle)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AirLedgeGrab failed: No obstacle."));
+		return false;
+	}
+
+	if (!Obstacle->IsA<ALedgeObstacle>())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AirLedgeGrab failed: Obstacle is not LedgeObstacle."));
+		return false;
+	}
+
+	CurrentTraversalInputs = EvaluateTraversal(Obstacle);
+
+	if (!CurrentTraversalInputs.bHasFrontLedge)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AirLedgeGrab failed: No front ledge."));
+		return false;
+	}
+
+	CurrentLedge = Cast<ALedgeObstacle>(Obstacle);
+	if (!CurrentLedge)
+		return false;
+
+	FVector SegmentCenter;
+	FVector SegmentRight;
+	float SegmentHalfLength = 0.f;
+
+	if (!CurrentLedge->GetLedgeMoveSegment(CurrentTraversalResult.FrontLedgeNormal, SegmentCenter, SegmentRight, SegmentHalfLength))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AirLedgeGrab failed: Invalid ledge move segment."));
+		return false;
+	}
+
+	// 입력 X 양수가 캐릭터의 오른쪽 방향과 최대한 맞도록 이동축을 정렬한다.
+	FVector CharacterRight = OwnerCharacter->GetActorRightVector();
+	CharacterRight.Z = 0.f;
+	CharacterRight.Normalize();
+	if (!CharacterRight.IsNearlyZero() && FVector::DotProduct(SegmentRight, CharacterRight) < 0.f)
+		SegmentRight *= -1.f;
+
+	const UCapsuleComponent* CapsuleComp = OwnerCharacter->GetCapsuleComponent();
+	const float CapsuleRadius = CapsuleComp ? CapsuleComp->GetScaledCapsuleRadius() : 34.f;
+
+	CurrentLedgeCenter = SegmentCenter;
+	CurrentLedgeRight = SegmentRight.GetSafeNormal();
+	CurrentLedgeNormal = CurrentTraversalResult.FrontLedgeNormal.GetSafeNormal();
+
+	CurrentLedgeMinOffset = -SegmentHalfLength + CapsuleRadius + LedgeEdgePadding;
+	CurrentLedgeMaxOffset = SegmentHalfLength - CapsuleRadius - LedgeEdgePadding;
+
+	if (CurrentLedgeMinOffset > CurrentLedgeMaxOffset)
+	{
+		CurrentLedgeMinOffset = 0.f;
+		CurrentLedgeMaxOffset = 0.f;
+	}
+
+	CurrentLedgeOffset = FVector::DotProduct(CurrentTraversalResult.FrontLedgeLocation - CurrentLedgeCenter, CurrentLedgeRight);
+	CurrentLedgeOffset = FMath::Clamp(CurrentLedgeOffset, CurrentLedgeMinOffset, CurrentLedgeMaxOffset);
+
+	const FVector ClampedLedgePoint = CurrentLedgeCenter + CurrentLedgeRight * CurrentLedgeOffset;
+
+	CurrentTraversalInputs.ActionType = ETraversalAction::LedgeGrab;
+	CurrentTraversalOutputs = FTraversalChooserOutputs();
+	CurrentTraversalOutputs.ActionType = ETraversalAction::LedgeGrab;
+
 	CurrentTraversalResult.ActionType = ETraversalAction::LedgeGrab;
+	CurrentTraversalResult.FrontLedgeLocation = ClampedLedgePoint;
+	CurrentTraversalResult.FrontLedgeNormal = CurrentLedgeNormal;
+	CurrentTraversalResult.ChosenMontage = nullptr;
+	CurrentTraversalResult.StartTime = 0.f;
+	CurrentTraversalResult.PlayRate = 1.f;
+
+	OutResult = CurrentTraversalResult;
 
 	return true;
 }
 
 void UParkourTraversalComponent::MoveAlongLedge(float Direction)
 {
-	if (!OwnerCharacter)
+	if (!OwnerCharacter || !CurrentLedge)
 		return;
 
-	// TODO: 현재 잡고 있는 난간의 좌우 이동 가능 범위를 확인한 뒤 이동 몽타주를 재생해야 한다.
+	// 좌우 이동 중이거나 기어오르는 중이면 추가 입력 무시
+	if (bIsLedgeMoving || bIsLedgeClimbing)
+		return;
 
-	return;
+	if (FMath::IsNearlyZero(Direction, 0.15f))
+		return;
+
+	const float DirectionSign = Direction > 0.f ? 1.f : -1.f;
+
+	const float TargetOffset = FMath::Clamp(CurrentLedgeOffset + DirectionSign * LedgeMoveStepDistance, CurrentLedgeMinOffset, CurrentLedgeMaxOffset);
+
+	// 난간 끝이면 이동하지 않음
+	if (FMath::IsNearlyEqual(TargetOffset, CurrentLedgeOffset, 0.1f))
+		return;
+
+	const ETraversalAction MoveAction = DirectionSign < 0.f ? ETraversalAction::LedgeMoveLeft : ETraversalAction::LedgeMoveRight;
+
+	const float MontageLength = PlayLedgeMontage(MoveAction);
+
+	LedgeMoveStartOffset = CurrentLedgeOffset;
+	LedgeMoveTargetOffset = TargetOffset;
+	LedgeMoveElapsedTime = 0.f;
+
+	LedgeMoveDuration = MontageLength > 0.f ? MontageLength : LedgeMoveDefaultDuration;
+	LedgeMoveDuration = FMath::Max(LedgeMoveDuration, 0.05f);
+
+	bIsLedgeMoving = true;
+	SetComponentTickEnabled(true);
 }
 
 void UParkourTraversalComponent::ClimbFromLedge()
 {
-	if (!OwnerCharacter)
+	if (!OwnerCharacter || !CurrentLedge)
 		return;
 
-	// TODO: 난간 위쪽 공간을 확인한 뒤 올라가기 몽타주를 재생해야 한다.
+	if (bIsLedgeMoving || bIsLedgeClimbing)
+		return;
 
-	return;
+	FVector StandLocation;
+	FRotator StandRotation;
+
+	if (!CanClimbFromLedge(StandLocation, StandRotation))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ClimbFromLedge failed: No room above ledge."));
+		return;
+	}
+
+	// 좌우 이동 몽타주가 남아 있으면 먼저 끊는다.
+	StopLedgeMontages(0.0f);
+
+	// 이전 Climb 타이머가 남아 있으면 제거한다.
+	if (GetWorld())
+		GetWorld()->GetTimerManager().ClearTimer(LedgeClimbFinishTimerHandle);
+
+	// Climb 중에는 현재 LedgeObstacle의 Blocking Collision에 막힐 수 있으므로 충돌을 임시로 무시한다.
+	SetCurrentLedgeCollisionIgnored(true);
+
+	const FVector CurrentLedgePoint =
+		CurrentLedgeCenter + CurrentLedgeRight * CurrentLedgeOffset;
+
+	// Climb 몽타주의 시작 손 위치 보정.
+	OwnerCharacter->SetClimbStartLocationFromLedgePoint(CurrentLedgePoint, CurrentLedgeNormal);
+
+	// Climb 중 입력 방지.
+	OwnerCharacter->EnterLedgeClimbState();
+
+	OwnerCharacter->SetClimbStandWarpTarget(StandLocation, StandRotation);
+	PendingClimbStandLocation = StandLocation;
+	PendingClimbStandRotation = StandRotation;
+
+	bIsLedgeClimbing = true;
+	bIsLedgeMoving = false;
+	SetComponentTickEnabled(false);
+
+	const float MontageLength = PlayLedgeMontage(ETraversalAction::LedgeClimbUp);
+
+	// 정상적으로 몽타주가 재생된 경우에는 Montage End Delegate에서 FinishLedgeClimb을 호출한다.
+	// 몽타주 재생 실패 시에만 fallback 타이머를 건다.
+	if (MontageLength <= 0.f && GetWorld())
+	{
+		GetWorld()->GetTimerManager().SetTimer(LedgeClimbFinishTimerHandle, this, &UParkourTraversalComponent::FinishLedgeClimb, LedgeClimbDefaultDuration, false);
+	}
 }
 
 void UParkourTraversalComponent::DropFromLedge()
@@ -216,18 +333,39 @@ void UParkourTraversalComponent::DropFromLedge()
 	if (!OwnerCharacter)
 		return;
 
-	// TODO: 매달린 상태를 해제하고 낙하 상태로 전환해야 한다.
+	if (GetWorld())
+		GetWorld()->GetTimerManager().ClearTimer(LedgeClimbFinishTimerHandle);
 
-	return;
+	// 좌우 이동 / 기어오르기 중단
+	bIsLedgeMoving = false;
+	bIsLedgeClimbing = false;
+	SetComponentTickEnabled(false);
+
+	LedgeMoveStartOffset = 0.f;
+	LedgeMoveTargetOffset = 0.f;
+	LedgeMoveElapsedTime = 0.f;
+	LedgeMoveDuration = 0.f;
+
+	PendingClimbStandLocation = FVector::ZeroVector;
+	PendingClimbStandRotation = FRotator::ZeroRotator;
+
+	// 남아 있는 좌우 이동 / 기어오르기 몽타주 중단
+	StopLedgeMontages(0.05f);
+
+	// Climb용 Motion Warping Target 제거
+	OwnerCharacter->ClearClimbStandWarpTarget();
+
+	// 충돌 복구
+	SetCurrentLedgeCollisionIgnored(false);
+
+	OwnerCharacter->ExitHangingToFalling();
+
+	ResetLedgeRuntimeState();
 }
 
-TArray<UAnimMontage*> UParkourTraversalComponent::BuildValidTraversalMontages(
-	const FTraversalChooserInputs& Inputs,
-	FTraversalChooserOutputs& OutOutputs
-)
+TArray<UAnimMontage*> UParkourTraversalComponent::BuildValidTraversalMontages(const FTraversalChooserInputs& Inputs, FTraversalChooserOutputs& OutOutputs)
 {
 	TArray<UAnimMontage*> Result;
-
 	OutOutputs = FTraversalChooserOutputs();
 
 	// Chooser 평가는 블루프린트에서 수행하고, C++은 결과만 받아서 사용한다.
@@ -236,36 +374,12 @@ TArray<UAnimMontage*> UParkourTraversalComponent::BuildValidTraversalMontages(
 	return Result;
 }
 
-bool UParkourTraversalComponent::MotionMatchTraversal(
-	const TArray<UAnimMontage*>& ValidMontages,
-	UAnimMontage*& OutMontage,
-	float& OutStartTime,
-	float& OutPlayRate
-) const
-{
-	OutMontage = nullptr;
-	OutStartTime = 0.f;
-	OutPlayRate = 1.f;
-
-	if (ValidMontages.IsEmpty())
-		return false;
-
-	BP_MotionMatchTraversal(ValidMontages, OutMontage, OutStartTime, OutPlayRate);
-
-	return OutMontage != nullptr;
-}
-
-bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(
-	const UAnimMontage* Montage,
-	float& OutEndTime
-) const
+bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(const UAnimMontage* Montage, float& OutEndTime) const
 {
 	OutEndTime = 0.f;
 
 	if (!Montage)
-	{
 		return false;
-	}
 
 	bool bFound = false;
 	float EarliestStartTime = TNumericLimits<float>::Max();
@@ -274,16 +388,11 @@ bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(
 	{
 		const UAnimNotifyState* NotifyState = NotifyEvent.NotifyStateClass;
 		if (!NotifyState)
-		{
 			continue;
-		}
 
-		// PoseSearch BranchIn NotifyState를 직접 타입 참조하지 않고 클래스명으로 확인한다.
 		const FString NotifyClassName = NotifyState->GetClass()->GetName();
 		if (!NotifyClassName.Contains(TEXT("PoseSearchBranchIn")))
-		{
 			continue;
-		}
 
 		const float StartTime = NotifyEvent.GetTriggerTime();
 		const float EndTime = NotifyEvent.GetEndTriggerTime();
@@ -305,55 +414,262 @@ bool UParkourTraversalComponent::FindPoseSearchBranchInEndTime(
 	return bFound;
 }
 
-float UParkourTraversalComponent::GetStartTimeFromBranchInEnd(const UAnimMontage* Montage) const
+float UParkourTraversalComponent::PlayLedgeMontage(ETraversalAction Action)
 {
-	float BranchInEndTime = 0.f;
-
-	if (!FindPoseSearchBranchInEndTime(Montage, BranchInEndTime))
-	{
+	if (!OwnerCharacter || !MotionData)
 		return 0.f;
-	}
-
-	return FMath::Max(
-		0.f,
-		BranchInEndTime - BranchInEndStartOffset
-	);
-}
-
-void UParkourTraversalComponent::PlayLedgeMontage(ETraversalAction Action)
-{
-	if (!MotionData)
-		return;
 
 	UAnimMontage* Montage = nullptr;
+
 	switch (Action)
 	{
 	case ETraversalAction::LedgeGrab:
 		Montage = MotionData->GetLedgeGrabMontage();
 		break;
+
 	case ETraversalAction::LedgeClimbUp:
 		Montage = MotionData->GetLedgeClimbUpMontage();
 		break;
+
 	case ETraversalAction::LedgeMoveLeft:
-		Montage = MotionData->GetLedgeMoveMontage(-1);
+		Montage = MotionData->GetLedgeMoveMontage(-1.f);
 		break;
+
 	case ETraversalAction::LedgeMoveRight:
-		Montage = MotionData->GetLedgeMoveMontage(1);
+		Montage = MotionData->GetLedgeMoveMontage(1.f);
 		break;
-	case ETraversalAction::LedgeDrop:
-		Montage = MotionData->GetLedgeDropMontage();
-		break;
+
 	default:
 		break;
 	}
+
+	if (!Montage)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PlayLedgeMontage failed: Montage is null."));
+		return 0.f;
+	}
+
+	USkeletalMeshComponent* MeshComp = OwnerCharacter->GetMesh();
+	if (!MeshComp)
+	{
+		return 0.f;
+	}
+
+	UAnimInstance* AnimInstance = MeshComp->GetAnimInstance();
+	if (!AnimInstance)
+	{
+		return 0.f;
+	}
+
+	const float StopBlendTime = Action == ETraversalAction::LedgeClimbUp ? 0.f : 0.05f;
+
+	AnimInstance->Montage_Stop(StopBlendTime, nullptr);
+
+	const float MontageLength = AnimInstance->Montage_Play(Montage, 1.f, EMontagePlayReturnType::MontageLength, 0.f);
+
+	if (MontageLength > 0.f && Action == ETraversalAction::LedgeClimbUp)
+	{
+		FOnMontageEnded EndDelegate;
+		EndDelegate.BindUObject(this, &UParkourTraversalComponent::OnLedgeClimbMontageEnded);
+		AnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);
+	}
+
+	return MontageLength;
 }
 
-bool UParkourTraversalComponent::CapsuleSweep(
-	const FVector& Start,
-	const FVector& End,
-	ECollisionChannel Channel,
-	FHitResult& OutHit
-) const
+void UParkourTraversalComponent::FinishLedgeMove()
+{
+	if (!OwnerCharacter || !CurrentLedge)
+	{
+		bIsLedgeMoving = false;
+		SetComponentTickEnabled(false);
+		return;
+	}
+
+	bIsLedgeMoving = false;
+	LedgeMoveElapsedTime = 0.f;
+	LedgeMoveDuration = 0.f;
+
+	CurrentLedgeOffset = LedgeMoveTargetOffset;
+
+	const FVector FinalLedgePoint = CurrentLedgeCenter + CurrentLedgeRight * CurrentLedgeOffset;
+	OwnerCharacter->SetHangLocationFromLedgePoint(FinalLedgePoint, CurrentLedgeNormal);
+
+	SetComponentTickEnabled(false);
+}
+
+bool UParkourTraversalComponent::CanClimbFromLedge(FVector& OutStandLocation, FRotator& OutStandRotation) const
+{
+	OutStandLocation = FVector::ZeroVector;
+	OutStandRotation = FRotator::ZeroRotator;
+
+	if (!OwnerCharacter || !CurrentLedge || !GetWorld())
+		return false;
+
+	const UCapsuleComponent* CapsuleComp = OwnerCharacter->GetCapsuleComponent();
+	if (!CapsuleComp)
+		return false;
+
+	const float CapsuleRadius = CapsuleComp->GetScaledCapsuleRadius();
+	const float CapsuleHalfHeight = CapsuleComp->GetScaledCapsuleHalfHeight();
+
+	FVector Outward = CurrentLedgeNormal;
+	Outward.Z = 0.f;
+
+	if (!Outward.Normalize())
+		return false;
+
+	const FVector Inward = -Outward;
+
+	const FVector CurrentLedgePoint =
+		CurrentLedgeCenter + CurrentLedgeRight * CurrentLedgeOffset;
+
+	// 일단 난간 안쪽 XY 위치를 계산한다.
+	const FVector DesiredStandXY =
+		CurrentLedgePoint
+		+ Inward * (CapsuleRadius + LedgeClimbStandForwardOffset);
+
+	// 실제 바닥 높이를 찾기 위해 위에서 아래로 트레이스한다.
+	const FVector FloorTraceStart =
+		DesiredStandXY + FVector(0.f, 0.f, CapsuleHalfHeight + FloorCheckExtraDistance);
+
+	const FVector FloorTraceEnd =
+		DesiredStandXY - FVector(0.f, 0.f, FloorCheckExtraDistance * 2.f);
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(LedgeClimbFloorCheck), false);
+	Params.AddIgnoredActor(OwnerCharacter);
+
+	// CurrentLedge 자체를 무시하면 바닥을 못 잡을 수 있으므로 여기서는 무시하지 않는다.
+	FHitResult FloorHit;
+	const bool bFloorHit = GetWorld()->LineTraceSingleByChannel(FloorHit, FloorTraceStart, FloorTraceEnd, RoomTraceChannel, Params);
+
+	if (!bFloorHit || !FloorHit.bBlockingHit)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("CanClimbFromLedge failed: No floor hit."));
+		return false;
+	}
+
+	OutStandLocation = FVector(DesiredStandXY.X, DesiredStandXY.Y, FloorHit.ImpactPoint.Z + CapsuleHalfHeight + LedgeClimbStandZOffset);
+	OutStandRotation = Inward.Rotation();
+
+	// 서는 위치에 캡슐이 들어갈 공간이 있는지 검사한다.
+	FCollisionQueryParams OverlapParams(SCENE_QUERY_STAT(LedgeClimbRoomCheck), false);
+	OverlapParams.AddIgnoredActor(OwnerCharacter);
+
+	const FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(CapsuleRadius, CapsuleHalfHeight);
+	const bool bBlocked = GetWorld()->OverlapBlockingTestByChannel(OutStandLocation, FQuat::Identity, RoomTraceChannel, CapsuleShape, OverlapParams);
+
+	return !bBlocked;
+}
+
+void UParkourTraversalComponent::FinishLedgeClimb()
+{
+	if (!OwnerCharacter)
+		return;
+
+	if (GetWorld())
+		GetWorld()->GetTimerManager().ClearTimer(LedgeClimbFinishTimerHandle);
+
+	bIsLedgeClimbing = false;
+	bIsLedgeMoving = false;
+	SetComponentTickEnabled(false);
+
+	OwnerCharacter->ExitHangingToStanding(PendingClimbStandLocation, PendingClimbStandRotation);
+
+	// 충돌 복구.
+	SetCurrentLedgeCollisionIgnored(false);
+
+	ResetLedgeRuntimeState();
+}
+
+void UParkourTraversalComponent::OnLedgeClimbMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (!bIsLedgeClimbing)
+		return;
+
+	if (bInterrupted)
+	{
+		bIsLedgeClimbing = false;
+		bIsLedgeMoving = false;
+		SetComponentTickEnabled(false);
+
+		SetCurrentLedgeCollisionIgnored(false);
+
+		if (OwnerCharacter)
+			OwnerCharacter->ExitHangingToFalling();
+
+		ResetLedgeRuntimeState();
+		return;
+	}
+
+	FinishLedgeClimb();
+}
+
+void UParkourTraversalComponent::ResetLedgeRuntimeState()
+{
+	if (bIsCurrentLedgeCollisionIgnored)
+		SetCurrentLedgeCollisionIgnored(false);
+
+	CurrentLedge = nullptr;
+
+	CurrentLedgeCenter = FVector::ZeroVector;
+	CurrentLedgeRight = FVector::RightVector;
+	CurrentLedgeNormal = FVector::ForwardVector;
+
+	CurrentLedgeOffset = 0.f;
+	CurrentLedgeMinOffset = 0.f;
+	CurrentLedgeMaxOffset = 0.f;
+
+	LedgeMoveStartOffset = 0.f;
+	LedgeMoveTargetOffset = 0.f;
+	LedgeMoveElapsedTime = 0.f;
+	LedgeMoveDuration = 0.f;
+
+	PendingClimbStandLocation = FVector::ZeroVector;
+	PendingClimbStandRotation = FRotator::ZeroRotator;
+
+	bIsLedgeMoving = false;
+	bIsLedgeClimbing = false;
+	bIsCurrentLedgeCollisionIgnored = false;
+
+	SetComponentTickEnabled(false);
+}
+
+void UParkourTraversalComponent::StopLedgeMontages(float BlendOutTime)
+{
+	if (!OwnerCharacter)
+		return;
+
+	USkeletalMeshComponent* MeshComp = OwnerCharacter->GetMesh();
+	if (!MeshComp)
+		return;
+
+	UAnimInstance* AnimInstance = MeshComp->GetAnimInstance();
+	if (!AnimInstance)
+		return;
+
+	AnimInstance->Montage_Stop(BlendOutTime, nullptr);
+}
+
+void UParkourTraversalComponent::SetCurrentLedgeCollisionIgnored(bool bIgnore)
+{
+	if (!OwnerCharacter)
+		return;
+
+	UCapsuleComponent* CapsuleComp = OwnerCharacter->GetCapsuleComponent();
+	if (!CapsuleComp)
+		return;
+
+	if (CurrentLedge)
+		CapsuleComp->IgnoreActorWhenMoving(CurrentLedge, bIgnore);
+
+	if (UPrimitiveComponent* HitComponent = CurrentTraversalResult.HitComponent.Get())
+		CapsuleComp->IgnoreComponentWhenMoving(HitComponent, bIgnore);
+
+	bIsCurrentLedgeCollisionIgnored = bIgnore;
+}
+
+bool UParkourTraversalComponent::CapsuleSweep(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const
 {
 	if (!OwnerCharacter || !GetWorld())
 		return false;
@@ -370,23 +686,10 @@ bool UParkourTraversalComponent::CapsuleSweep(
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(ParkourCapsuleSweep), false);
 	Params.AddIgnoredActor(OwnerCharacter);
 
-	return GetWorld()->SweepSingleByChannel(
-		OutHit,
-		Start,
-		End,
-		FQuat::Identity,
-		Channel,
-		Shape,
-		Params
-	);
+	return GetWorld()->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity, Channel, Shape, Params);
 }
 
-bool UParkourTraversalComponent::HasCapsuleRoom(
-	const FVector& Start,
-	const FVector& End,
-	ECollisionChannel Channel,
-	FHitResult& OutHit
-) const
+bool UParkourTraversalComponent::HasCapsuleRoom(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const
 {
 	const bool bHit = CapsuleSweep(Start, End, Channel, OutHit);
 
@@ -396,9 +699,7 @@ bool UParkourTraversalComponent::HasCapsuleRoom(
 	return !(OutHit.bBlockingHit || OutHit.bStartPenetrating);
 }
 
-FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
-	AParkourObstacleBase* ObstacleBase
-)
+FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(AParkourObstacleBase* ObstacleBase)
 {
 	FTraversalCheckResult Result;
 
@@ -408,8 +709,6 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
 	const UCapsuleComponent* CapsuleComp = OwnerCharacter->GetCapsuleComponent();
 	if (!CapsuleComp)
 		return Result;
-
-	UE_LOG(LogTemp, Warning, TEXT("TraversalCheckStart"));
 
 	const FVector ActorLocation = OwnerCharacter->GetActorLocation();
 	const float CapsuleRadius = CapsuleComp->GetScaledCapsuleRadius();
@@ -422,7 +721,6 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
 	float ObstacleHeight = 0.f;
 	float ObstacleDepth = 0.f;
 
-	// 장애물 Bounds 기준으로 앞/뒤 Ledge 위치와 Normal 정보를 가져온다.
 	const bool bGotLedgeData = ObstacleBase->GetTraversalLedgeData(
 		LastObstacleHit,
 		ActorLocation,
@@ -446,77 +744,74 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
 	Result.BackLedgeLocation = BackLedgeLocation;
 	Result.BackLedgeNormal = BackLedgeNormal.GetSafeNormal();
 
-	// Chooser에서 사용할 장애물 높이는 캐릭터 캡슐 바닥 기준으로 계산한다.
 	const FVector CapsuleLocation = CapsuleComp->GetComponentLocation();
 	const float CapsuleBottomZ = CapsuleLocation.Z - CapsuleHalfHeight;
+
 	Result.ObstacleHeight = FMath::Max(0.f, Result.FrontLedgeLocation.Z - CapsuleBottomZ);
 	Result.ObstacleDepth = ObstacleDepth;
-
 	Result.HitComponent = LastObstacleHit.GetComponent();
 
-	// FrontLedge 앞쪽에 캐릭터 캡슐이 들어갈 수 있는 공간이 있는지 확인한다.
+	const bool bIsLedgeObstacle = ObstacleBase->IsA<ALedgeObstacle>();
+
+	if (bIsLedgeObstacle)
+	{
+		CurrentLedge = Cast<ALedgeObstacle>(ObstacleBase);
+
+		Result.ActionType = ETraversalAction::LedgeGrab;
+
+		// LedgeObstacle은 매달리기 전용이므로 앞 난간만 있으면 된다.
+		Result.bHasFrontLedge = true;
+		Result.bHasBackLedge = false;
+		Result.bHasBackFloor = false;
+		Result.BackLedgeHeight = 0.f;
+
+		return Result;
+	}
+
+	// 여기부터는 일반 Vault / Hurdle / Mantle용 공간 검사.
+
 	const FVector FrontRoomLocation =
 		Result.FrontLedgeLocation
 		+ Result.FrontLedgeNormal * (CapsuleRadius + LedgeRoomPadding)
 		+ FVector(0.f, 0.f, CapsuleHalfHeight + LedgeRoomPadding);
 
 	FHitResult FrontRoomHit;
-	const bool bHasFrontRoom = HasCapsuleRoom(
-		ActorLocation,
-		FrontRoomLocation,
-		RoomTraceChannel,
-		FrontRoomHit
-	);
-
-	UE_LOG(LogTemp, Warning, TEXT("bHasFrontRoom"));
+	const bool bHasFrontRoom = HasCapsuleRoom(ActorLocation, FrontRoomLocation, RoomTraceChannel, FrontRoomHit);
 
 	if (!bHasFrontRoom)
 	{
 		Result.bHasFrontLedge = false;
+		Result.bHasBackLedge = false;
+		Result.bHasBackFloor = false;
 		return Result;
 	}
 
-	// BackLedge까지 이동하는 경로에 캐릭터 캡슐이 들어갈 수 있는지 확인한다.
 	const FVector BackRoomLocation =
 		Result.BackLedgeLocation
 		+ Result.BackLedgeNormal * (CapsuleRadius + LedgeRoomPadding)
 		+ FVector(0.f, 0.f, CapsuleHalfHeight + LedgeRoomPadding);
 
 	FHitResult TopSweepHit;
-	const bool bHasTopRoom = HasCapsuleRoom(
-		FrontRoomLocation,
-		BackRoomLocation,
-		RoomTraceChannel,
-		TopSweepHit
-	);
+	const bool bHasTopRoom = HasCapsuleRoom(FrontRoomLocation,BackRoomLocation,RoomTraceChannel,TopSweepHit);
 
 	if (!bHasTopRoom)
 	{
 		Result.bHasBackLedge = false;
 		Result.bHasBackFloor = false;
-
 		return Result;
 	}
 
-	// 장애물 뒤쪽 아래에 착지 가능한 바닥이 있는지 확인한다.
-	const FVector FloorTraceStart =
-		BackRoomLocation + FVector(0.f, 0.f, FloorCheckExtraDistance);
+	const FVector FloorTraceStart =BackRoomLocation + FVector(0.f, 0.f, FloorCheckExtraDistance);
 
 	const float FloorCheckDistance =
 		CapsuleHalfHeight
 		+ Result.ObstacleHeight * 0.5f
 		+ FloorCheckExtraDistance;
 
-	const FVector FloorTraceEnd =
-		FloorTraceStart - FVector(0.f, 0.f, FloorCheckDistance);
+	const FVector FloorTraceEnd = FloorTraceStart - FVector(0.f, 0.f, FloorCheckDistance);
 
 	FHitResult FloorHit;
-	const bool bFloorHit = CapsuleSweep(
-		FloorTraceStart,
-		FloorTraceEnd,
-		RoomTraceChannel,
-		FloorHit
-	);
+	const bool bFloorHit = CapsuleSweep(FloorTraceStart, FloorTraceEnd, RoomTraceChannel, FloorHit);
 
 	if (!bFloorHit || !FloorHit.bBlockingHit)
 	{
@@ -525,19 +820,13 @@ FTraversalCheckResult UParkourTraversalComponent::BuildTraversalCheckResult(
 	}
 
 	Result.bHasBackFloor = true;
-
-	// BackFloor는 모션워핑의 착지 기준으로 사용할 실제 바닥 표면 위치다.
 	Result.BackFloorLocation = FloorHit.ImpactPoint;
-
-	// BackLedgeHeight는 장애물 뒤쪽 ledge와 실제 착지 바닥 사이의 높이 차이다.
 	Result.BackLedgeHeight = FMath::Abs(Result.BackLedgeLocation.Z - FloorHit.ImpactPoint.Z);
 
 	return Result;
 }
 
-FTraversalChooserInputs UParkourTraversalComponent::MakeChooserInputsFromCheckResult(
-	const FTraversalCheckResult& CheckResult
-) const
+FTraversalChooserInputs UParkourTraversalComponent::MakeChooserInputsFromCheckResult(const FTraversalCheckResult& CheckResult) const
 {
 	FTraversalChooserInputs Inputs;
 

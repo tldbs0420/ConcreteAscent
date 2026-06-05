@@ -61,15 +61,11 @@ bool AParkourObstacleBase::GetTraversalLedgeData_Implementation(
 	const FVector BoxExtent = TraversalBounds->GetUnscaledBoxExtent();
 
 	// 플레이어 위치는 장애물의 어느 면에서 접근했는지 판단하는 기준으로 사용한다.
-	const FVector LocalActorLocation =
-		BoundsTransform.InverseTransformPosition(ActorLocation);
+	const FVector LocalActorLocation = BoundsTransform.InverseTransformPosition(ActorLocation);
 
 	// 충돌 지점은 Ledge의 좌우 위치를 결정하는 기준으로 사용한다.
-	const FVector ReferenceWorldLocation =
-		HitResult.bBlockingHit ? HitResult.ImpactPoint : ActorLocation;
-
-	const FVector LocalReferenceLocation =
-		BoundsTransform.InverseTransformPosition(ReferenceWorldLocation);
+	const FVector ReferenceWorldLocation = HitResult.bBlockingHit ? HitResult.ImpactPoint : ActorLocation;
+	const FVector LocalReferenceLocation = BoundsTransform.InverseTransformPosition(ReferenceWorldLocation);
 
 	// BoxExtent가 0에 가까울 때 나눗셈 오류가 발생하지 않도록 보정한다.
 	const float SafeExtentX = FMath::Max(BoxExtent.X, KINDA_SMALL_NUMBER);
@@ -88,76 +84,39 @@ bool AParkourObstacleBase::GetTraversalLedgeData_Implementation(
 	if (NormalizedX >= NormalizedY)
 	{
 		const float SignX = LocalActorLocation.X >= 0.f ? 1.f : -1.f;
-		const float ClampedY = FMath::Clamp(
-			LocalReferenceLocation.Y,
-			-BoxExtent.Y,
-			BoxExtent.Y
-		);
+		const float ClampedY = FMath::Clamp(LocalReferenceLocation.Y, -BoxExtent.Y, BoxExtent.Y);
 
 		// 플레이어가 접근한 X축 방향 면을 FrontLedge로 사용한다.
 		FrontNormalLocal = FVector(SignX, 0.f, 0.f);
 		BackNormalLocal = -FrontNormalLocal;
 
-		FrontLedgeLocal = FVector(
-			SignX * BoxExtent.X,
-			ClampedY,
-			BoxExtent.Z
-		);
-
-		BackLedgeLocal = FVector(
-			-SignX * BoxExtent.X,
-			ClampedY,
-			BoxExtent.Z
-		);
+		FrontLedgeLocal = FVector(SignX * BoxExtent.X, ClampedY, BoxExtent.Z);
+		BackLedgeLocal = FVector(-SignX * BoxExtent.X, ClampedY, BoxExtent.Z);
 	}
 	else
 	{
 		const float SignY = LocalActorLocation.Y >= 0.f ? 1.f : -1.f;
-		const float ClampedX = FMath::Clamp(
-			LocalReferenceLocation.X,
-			-BoxExtent.X,
-			BoxExtent.X
-		);
+		const float ClampedX = FMath::Clamp(LocalReferenceLocation.X, -BoxExtent.X, BoxExtent.X);
 
 		// 플레이어가 접근한 Y축 방향 면을 FrontLedge로 사용한다.
 		FrontNormalLocal = FVector(0.f, SignY, 0.f);
 		BackNormalLocal = -FrontNormalLocal;
 
-		FrontLedgeLocal = FVector(
-			ClampedX,
-			SignY * BoxExtent.Y,
-			BoxExtent.Z
-		);
-
-		BackLedgeLocal = FVector(
-			ClampedX,
-			-SignY * BoxExtent.Y,
-			BoxExtent.Z
-		);
+		FrontLedgeLocal = FVector(ClampedX, SignY * BoxExtent.Y, BoxExtent.Z);
+		BackLedgeLocal = FVector(ClampedX, -SignY * BoxExtent.Y, BoxExtent.Z);
 	}
 
 	// 계산된 로컬 Ledge 위치를 월드 좌표로 변환한다.
-	OutFrontLedgeLocation =
-		BoundsTransform.TransformPosition(FrontLedgeLocal);
-
-	OutBackLedgeLocation =
-		BoundsTransform.TransformPosition(BackLedgeLocal);
+	OutFrontLedgeLocation = BoundsTransform.TransformPosition(FrontLedgeLocal);
+	OutBackLedgeLocation = BoundsTransform.TransformPosition(BackLedgeLocal);
 
 	// 로컬 Normal을 월드 방향으로 변환한다. 크기는 필요 없으므로 Scale은 제외한다.
-	OutFrontLedgeNormal =
-		BoundsTransform.TransformVectorNoScale(FrontNormalLocal).GetSafeNormal();
-
-	OutBackLedgeNormal =
-		BoundsTransform.TransformVectorNoScale(BackNormalLocal).GetSafeNormal();
+	OutFrontLedgeNormal = BoundsTransform.TransformVectorNoScale(FrontNormalLocal).GetSafeNormal();
+	OutBackLedgeNormal = BoundsTransform.TransformVectorNoScale(BackNormalLocal).GetSafeNormal();
 
 	// 장애물 자체의 높이와 깊이를 보조 정보로 반환한다.
-	OutObstacleHeight =
-		TraversalBounds->GetScaledBoxExtent().Z * 2.f;
-
-	OutObstacleDepth = FVector::Dist2D(
-		OutFrontLedgeLocation,
-		OutBackLedgeLocation
-	);
+	OutObstacleHeight = TraversalBounds->GetScaledBoxExtent().Z * 2.f;
+	OutObstacleDepth = FVector::Dist2D(OutFrontLedgeLocation, OutBackLedgeLocation);
 
 	return true;
 }

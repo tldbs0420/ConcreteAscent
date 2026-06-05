@@ -3,6 +3,7 @@
 
 #include "Objects/Triggers/CheckpointActor.h"
 #include "Components/SceneComponent.h"
+#include "GameMode/ConcreteAscentGameModeBase.h"
 
 ACheckpointActor::ACheckpointActor()
 {
@@ -27,8 +28,10 @@ void ACheckpointActor::OnPlayerEntered(AConcreteAscentCharacter* Character)
 	if (!Character || !CachedGameMode)
 		return;
 
+	CachedGameMode->SetCurrentCheckpoint(this);
+
+	// 한 번 활성화된 체크포인트는 중복 발동하지 않도록 비활성화한다.
 	bIsEnabled = false;
 
-	// TODO: GameMode에 체크포인트 등록
 	// TODO: 체크포인트 활성화 VFX/SFX/UI 처리
 }

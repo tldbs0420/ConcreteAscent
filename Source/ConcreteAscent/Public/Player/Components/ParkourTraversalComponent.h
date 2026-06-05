@@ -12,7 +12,6 @@ class AParkourObstacleBase;
 class ALedgeObstacle;
 class UParkourMotionData;
 class UAnimMontage;
-class UMotionWarpingComponent;
 
 UCLASS(Blueprintable, BlueprintType, ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class CONCRETEASCENT_API UParkourTraversalComponent : public UActorComponent
@@ -24,6 +23,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 protected:
 	// Owner
@@ -36,9 +36,6 @@ protected:
 
 	// Runtime obstacle state
 	UPROPERTY(Transient)
-	TObjectPtr<AParkourObstacleBase> DetectedObstacle;
-
-	UPROPERTY(Transient)
 	TObjectPtr<ALedgeObstacle> CurrentLedge;
 
 	UPROPERTY(Transient)
@@ -47,6 +44,58 @@ protected:
 	// Runtime traversal state
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal")
 	float CurrentLedgeOffset = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	FVector CurrentLedgeCenter = FVector::ZeroVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	FVector CurrentLedgeRight = FVector::RightVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	FVector CurrentLedgeNormal = FVector::ForwardVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float CurrentLedgeMinOffset = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float CurrentLedgeMaxOffset = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	bool bIsLedgeMoving = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeMoveStepDistance = 80.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeEdgePadding = 15.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeMoveDefaultDuration = 0.35f;
+
+	float LedgeMoveStartOffset = 0.f;
+	float LedgeMoveTargetOffset = 0.f;
+	float LedgeMoveElapsedTime = 0.f;
+	float LedgeMoveDuration = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	bool bIsLedgeClimbing = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal|Ledge")
+	bool bIsCurrentLedgeCollisionIgnored = false;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeClimbDefaultDuration = 0.7f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeClimbStandForwardOffset = 20.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Ledge")
+	float LedgeClimbStandZOffset = 3.f;
+
+	FVector PendingClimbStandLocation = FVector::ZeroVector;
+	FRotator PendingClimbStandRotation = FRotator::ZeroRotator;
+
+	FTimerHandle LedgeClimbFinishTimerHandle;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Traversal")
 	FTraversalCheckResult CurrentTraversalResult;
@@ -76,10 +125,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|Trace")
 	float FloorCheckExtraDistance = 100.f;
 
-	// Pose Search settings
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Traversal|PoseSearch")
-	float BranchInEndStartOffset = 0.03f;
-
 protected:
 	// Trace helpers
 	bool CapsuleSweep(const FVector& Start, const FVector& End, ECollisionChannel Channel, FHitResult& OutHit) const;
@@ -101,8 +146,8 @@ public:
 	bool StartTraversal(FTraversalCheckResult& OutResult);
 
 	// Ledge flow
-	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	bool StartLedgeGrab(float Direction = 0.f);
+	UFUNCTION(BlueprintCallable, Category = "Traversal|Ledge")
+	bool TryAirLedgeGrab(FTraversalCheckResult& OutResult);
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	void MoveAlongLedge(float Direction);
@@ -114,17 +159,20 @@ public:
 	void DropFromLedge();
 
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	void PlayLedgeMontage(ETraversalAction Action);
+	float PlayLedgeMontage(ETraversalAction Action);
+	void FinishLedgeMove();
+	bool CanClimbFromLedge(FVector& OutStandLocation, FRotator& OutStandRotation) const;
+	void FinishLedgeClimb();
+	void OnLedgeClimbMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	void ResetLedgeRuntimeState();
+	void StopLedgeMontages(float BlendOutTime = 0.05f);
+	void SetCurrentLedgeCollisionIgnored(bool bIgnore);
 
 	// Montage selection
 	UFUNCTION(BlueprintCallable, Category = "Traversal")
 	TArray<UAnimMontage*> BuildValidTraversalMontages(const FTraversalChooserInputs& Inputs,FTraversalChooserOutputs& OutOutputs);
 
-	UFUNCTION(BlueprintCallable, Category = "Traversal")
-	bool MotionMatchTraversal(const TArray<UAnimMontage*>& ValidMontages, UAnimMontage*& OutMontage, float& OutStartTime, float& OutPlayRate) const;
-
 	bool FindPoseSearchBranchInEndTime(const UAnimMontage* Montage, float& OutEndTime) const;
-	float GetStartTimeFromBranchInEnd(const UAnimMontage* Montage) const;
 
 public:
 	// Blueprint extension points
@@ -133,7 +181,4 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal")
 	void BP_EvaluateTraversalChooser(const FTraversalChooserInputs& Inputs, FTraversalChooserOutputs& Outputs, TArray<UAnimMontage*>& OutMontages);
-
-	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal")
-	void BP_MotionMatchTraversal(const TArray<UAnimMontage*>& ValidMontages, UAnimMontage*& OutMontage, float& OutStartTime, float& OutPlayRate) const;
 };

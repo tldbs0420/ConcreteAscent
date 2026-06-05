@@ -9,7 +9,6 @@
 
 class AConcreteAscentCharacter;
 class UParkourMotionData;
-class UPoseSearchDatabase;
 
 /**
  * 
@@ -61,7 +60,4 @@ protected:
 public:
 	UFUNCTION(BlueprintCallable, Category = "Animation")
 	void GetGaitFromPlayer();
-
-	UFUNCTION(BlueprintPure, Category = "Animation")
-	UPoseSearchDatabase* SelectLocomotionDatabase() const;
 };

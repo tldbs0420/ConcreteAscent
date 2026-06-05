@@ -10,12 +10,15 @@
 #include "Player/Components/ParkourTraversalComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "MotionWarpingComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 
 namespace
 {
 	const FName FrontLedgeWarpTargetName(TEXT("FrontLedge"));
 	const FName BackLedgeWarpTargetName(TEXT("BackLedge"));
 	const FName BackFloorWarpTargetName(TEXT("BackFloor"));
+	const FName ClimbStandWarpTargetName(TEXT("ClimbStand"));
 
 	FTransform MakeTraversalWarpTransformFromForward(const FVector& Location, const FVector& Forward)
 	{
@@ -104,29 +107,221 @@ void AConcreteAscentCharacter::Landed(const FHitResult& Hit)
 	bJustLanded = true;
 
 	GetWorldTimerManager().ClearTimer(JustLandedTimerHandle);
-	GetWorldTimerManager().SetTimer(
-		JustLandedTimerHandle,
-		this,
-		&AConcreteAscentCharacter::ClearJustLanded,
-		0.3f,
-		false
-	);
+	GetWorldTimerManager().SetTimer(JustLandedTimerHandle, this, &AConcreteAscentCharacter::ClearJustLanded, 0.3f, false);
+}
+
+void AConcreteAscentCharacter::SnapToCurrentLedgeHang()
+{
+	if (!CurrentTraversalResult.bHasFrontLedge)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SnapToCurrentLedgeHang failed: No front ledge."));
+		return;
+	}
+
+	SetHangLocationFromLedgePoint(CurrentTraversalResult.FrontLedgeLocation, CurrentTraversalResult.FrontLedgeNormal);
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+		MoveComp->SetMovementMode(MOVE_Flying);
+		MoveComp->MaxFlySpeed = 0.f;
+		MoveComp->MaxWalkSpeed = 0.f;
+	}
+}
+
+void AConcreteAscentCharacter::SetHangLocationFromLedgePoint(const FVector& LedgePoint, const FVector& LedgeNormal)
+{
+	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+	if (!CapsuleComp)
+		return;
+
+	FVector Outward = LedgeNormal;
+	Outward.Z = 0.f;
+
+	if (!Outward.Normalize())
+	{
+		Outward = -GetActorForwardVector();
+		Outward.Z = 0.f;
+		Outward.Normalize();
+	}
+
+	if (Outward.IsNearlyZero())
+		Outward = FVector::BackwardVector;
+
+	const FVector FacingWall = -Outward;
+	const float CapsuleRadius = CapsuleComp->GetScaledCapsuleRadius();
+
+	const FVector HangActorLocation = LedgePoint + Outward * (CapsuleRadius + HangWallGap) - FVector(0.f, 0.f, HangRootZOffset);
+
+	SetActorLocationAndRotation(HangActorLocation, FacingWall.Rotation(), false, nullptr, ETeleportType::TeleportPhysics);
+}
+
+void AConcreteAscentCharacter::SetClimbStartLocationFromLedgePoint(const FVector& LedgePoint, const FVector& LedgeNormal)
+{
+	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+	if (!CapsuleComp)
+		return;
+
+	FVector Outward = LedgeNormal;
+	Outward.Z = 0.f;
+
+	if (!Outward.Normalize())
+	{
+		Outward = -GetActorForwardVector();
+		Outward.Z = 0.f;
+		Outward.Normalize();
+	}
+
+	if (Outward.IsNearlyZero())
+		Outward = FVector::BackwardVector;
+
+	const FVector FacingWall = -Outward;
+	const float CapsuleRadius = CapsuleComp->GetScaledCapsuleRadius();
+
+	const FVector ClimbStartActorLocation = 
+		LedgePoint 
+		+ Outward * (CapsuleRadius + ClimbStartWallGap) 
+		- FVector(0.f, 0.f, ClimbStartRootZOffset);
+
+	SetActorLocationAndRotation(ClimbStartActorLocation, FacingWall.Rotation(), false, nullptr, ETeleportType::TeleportPhysics);
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+		MoveComp->SetMovementMode(MOVE_Flying);
+		MoveComp->MaxFlySpeed = 0.f;
+		MoveComp->MaxWalkSpeed = 0.f;
+	}
+}
+
+void AConcreteAscentCharacter::SetClimbStandWarpTarget(const FVector& StandLocation, const FRotator& StandRotation)
+{
+	if (!MotionWarpingComponent)
+		return;
+
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(ClimbStandWarpTargetName, FTransform(StandRotation, StandLocation, FVector::OneVector));
+}
+
+void AConcreteAscentCharacter::ClearClimbStandWarpTarget()
+{
+	if (!MotionWarpingComponent)
+		return;
+
+	MotionWarpingComponent->RemoveWarpTarget(ClimbStandWarpTargetName);
+}
+
+void AConcreteAscentCharacter::EnterLedgeClimbState()
+{
+	bIsHanging = true;
+	bIsTraversing = true;
+	bCanMove = false;
+	bSprint = false;
+
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		// Climb 중 실제 이동은 Root Motion + Motion Warping이 담당
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+		MoveComp->SetMovementMode(MOVE_Flying);
+		MoveComp->MaxWalkSpeed = 0.f;
+		MoveComp->MaxFlySpeed = 0.f;
+	}
+}
+
+void AConcreteAscentCharacter::EnterHangingState()
+{
+	bIsTraversing = false;
+	bIsHanging = true;
+	bCanMove = false;
+	bSprint = false;
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+		MoveComp->SetMovementMode(MOVE_Flying);
+
+		MoveComp->MaxWalkSpeed = 0.f;
+		MoveComp->MaxFlySpeed = 0.f;
+	}
+}
+
+void AConcreteAscentCharacter::ExitHangingToFalling()
+{
+	bIsHanging = false;
+	bIsTraversing = false;
+	bCanMove = true;
+	bSprint = false;
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
+
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
+			AnimInstance->Montage_Stop(0.05f, nullptr);
+	}
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+
+		MoveComp->MaxWalkSpeed = RunMaxSpeed;
+		MoveComp->MaxFlySpeed = RunMaxSpeed;
+
+		MoveComp->SetMovementMode(MOVE_Falling);
+	}
+
+	UpdateGait();
+}
+
+void AConcreteAscentCharacter::ExitHangingToStanding(const FVector& StandLocation, const FRotator& StandRotation)
+{
+	bIsHanging = false;
+	bIsTraversing = false;
+	bCanMove = true;
+	bSprint = false;
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
+
+	// 오차 보정용
+	SetActorLocationAndRotation(StandLocation, StandRotation, false, nullptr, ETeleportType::TeleportPhysics);
+	ClearClimbStandWarpTarget();
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->Velocity = FVector::ZeroVector;
+
+		MoveComp->MaxWalkSpeed = RunMaxSpeed;
+		MoveComp->MaxFlySpeed = RunMaxSpeed;
+
+		MoveComp->SetMovementMode(MOVE_Walking);
+	}
+
+	UpdateGait();
 }
 
 void AConcreteAscentCharacter::UpdateGait()
 {
-	if (bIsTraversing)
+	if (bIsTraversing || bIsHanging)
 		return;
 
 	UCharacterMovementComponent* AscentCharacterMovement = GetCharacterMovement();
 	if (!AscentCharacterMovement)
-	{
 		return;
-	}
 
 	if (!bCanMove)
 	{
 		AscentCharacterMovement->MaxWalkSpeed = 0.f;
+		AscentCharacterMovement->MaxFlySpeed = 0.f;
 		return;
 	}
 
@@ -154,25 +349,19 @@ void AConcreteAscentCharacter::ClearJustLanded()
 
 void AConcreteAscentCharacter::BeginTraversal()
 {
-	// 파쿠르 동작 중에는 일반 이동 입력과 CharacterMovement의 기본 이동 처리를 잠시 막는다.
 	bIsTraversing = true;
 	bCanMove = false;
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
-		// 기존 이동 관성을 제거해 파쿠르 몽타주와 모션워핑이 안정적으로 적용되도록 한다.
 		MoveComp->StopMovementImmediately();
-
-		// 파쿠르 중에는 Walking의 바닥 보정과 중력 영향을 피하기 위해 Flying 모드를 사용한다.
 		MoveComp->SetMovementMode(MOVE_Flying);
 	}
 
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
-		CapsuleComp->IgnoreComponentWhenMoving(
-			CurrentTraversalResult.HitComponent.Get(),
-			true
-		);
+		if (UPrimitiveComponent* HitComponent = CurrentTraversalResult.HitComponent.Get())
+			CapsuleComp->IgnoreComponentWhenMoving(HitComponent, true);
 	}
 }
 
@@ -181,16 +370,10 @@ void AConcreteAscentCharacter::EndTraversal()
 	bIsTraversing = false;
 	bCanMove = true;
 
-	// 파쿠르 중 임시로 무시했던 장애물 충돌을 복구한다.
 	if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 	{
 		if (CurrentTraversalResult.HitComponent)
-		{
-			CapsuleComp->IgnoreComponentWhenMoving(
-				CurrentTraversalResult.HitComponent.Get(),
-				false
-			);
-		}
+			CapsuleComp->IgnoreComponentWhenMoving(CurrentTraversalResult.HitComponent.Get(), false);
 	}
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
@@ -221,18 +404,74 @@ void AConcreteAscentCharacter::OnTraversalMontageEnded(UAnimMontage* Montage, bo
 void AConcreteAscentCharacter::Move(const FInputActionValue& InputValue)
 {
 	const FVector2D MovementVector = InputValue.Get<FVector2D>();
+
+	if (bIsTraversing)
+		return;
+
+	if (bIsHanging)
+	{
+		const bool bHorizontalPressed = FMath::Abs(MovementVector.X) >= 0.5f;
+		const bool bVerticalPressed = FMath::Abs(MovementVector.Y) >= 0.5f;
+
+		if (!bHorizontalPressed)
+			bWasHangingMoveInputPressed = false;
+
+		if (!bVerticalPressed)
+			bWasHangingVerticalInputPressed = false;
+
+		if (bVerticalPressed)
+		{
+			if (bWasHangingVerticalInputPressed)
+				return;
+
+			bWasHangingVerticalInputPressed = true;
+
+			if (ParkourTraversalComponent)
+			{
+				if (MovementVector.Y > 0.f)
+					// W: 위로 기어오르기
+					ParkourTraversalComponent->ClimbFromLedge();
+				else
+					// S: 놓고 떨어지기
+					ParkourTraversalComponent->DropFromLedge();
+			}
+
+			return;
+		}
+
+		if (bHorizontalPressed)
+		{
+			if (bWasHangingMoveInputPressed)
+				return;
+
+			bWasHangingMoveInputPressed = true;
+
+			if (ParkourTraversalComponent)
+				ParkourTraversalComponent->MoveAlongLedge(MovementVector.X);
+
+			return;
+		}
+
+		return;
+	}
+
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
+
+	if (!bCanMove)
+		return;
+
 	const FRotator MovementRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
 
 	if (MovementVector.Y != 0.0f)
 	{
 		const FVector ForwardDirection = MovementRotation.RotateVector(FVector::ForwardVector);
-
 		AddMovementInput(ForwardDirection, MovementVector.Y);
 	}
+
 	if (MovementVector.X != 0.0f)
 	{
 		const FVector RightDirection = MovementRotation.RotateVector(FVector::RightVector);
-
 		AddMovementInput(RightDirection, MovementVector.X);
 	}
 }
@@ -242,13 +481,9 @@ void AConcreteAscentCharacter::Look(const FInputActionValue& InputValue)
 	const FVector2D LookAxisVector = InputValue.Get<FVector2D>();
 
 	if (LookAxisVector.X != 0.0f)
-	{
 		AddControllerYawInput(LookAxisVector.X);
-	}
 	if (LookAxisVector.Y != 0.0f)
-	{
 		AddControllerPitchInput(LookAxisVector.Y);
-	}
 }
 
 void AConcreteAscentCharacter::ToggleWalk(const FInputActionValue& InputValue)
@@ -268,25 +503,46 @@ void AConcreteAscentCharacter::StopSprint(const FInputActionValue& InputValue)
 
 void AConcreteAscentCharacter::Jump()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Jump"));
+	if (bIsHanging)
+		return;
 
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	const bool bIsInAir = MoveComp && MoveComp->IsFalling();
+
+	// 공중에서 Space를 한 번 더 누르면 난간 잡기를 시도한다.
+	if (bIsInAir)
+	{
+		if (ParkourTraversalComponent)
+		{
+			FTraversalCheckResult LedgeGrabResult;
+
+			if (ParkourTraversalComponent->TryAirLedgeGrab(LedgeGrabResult))
+			{
+				CurrentTraversalResult = LedgeGrabResult;
+
+				SnapToCurrentLedgeHang();
+				EnterHangingState();
+
+				return;
+			}
+		}
+
+		// 난간이 없으면 공중 Space는 무시한다.
+		return;
+	}
+
+	// 지상에서는 파쿠르 / 일반 점프 흐름
 	if (ParkourTraversalComponent)
 	{
 		FTraversalCheckResult TraversalResult;
+
 		if (ParkourTraversalComponent->StartTraversal(TraversalResult))
 		{
 			CurrentTraversalResult = TraversalResult;
-
 			BeginTraversal();
-
 			UpdateTraversalWarpTargets(CurrentTraversalResult);
 
-			const float MontageLength = PlayTraversalMontage(
-				CurrentTraversalResult.ChosenMontage,
-				CurrentTraversalResult.PlayRate,
-				CurrentTraversalResult.StartTime
-			);
-
+			const float MontageLength = PlayTraversalMontage(CurrentTraversalResult.ChosenMontage, CurrentTraversalResult.PlayRate, CurrentTraversalResult.StartTime);
 			if (MontageLength > 0.f)
 				return;
 
@@ -294,131 +550,99 @@ void AConcreteAscentCharacter::Jump()
 		}
 	}
 
-	// 파쿠르 동작을 시작하지 못한 경우 일반 점프를 수행한다.
 	Super::Jump();
 }
 
 void AConcreteAscentCharacter::RespawnAt(const FTransform& RespawnTransform)
 {
-	SetActorLocationAndRotation(
-		RespawnTransform.GetLocation(),
-		RespawnTransform.GetRotation().Rotator(),
-		false,
-		nullptr,
-		ETeleportType::TeleportPhysics
-	);
+	SetActorLocationAndRotation(RespawnTransform.GetLocation(), RespawnTransform.GetRotation().Rotator(), false, nullptr, ETeleportType::TeleportPhysics);
 
 	if (UCharacterMovementComponent* AscentCharacterMovement = GetCharacterMovement())
 	{
 		AscentCharacterMovement->StopMovementImmediately();
 		AscentCharacterMovement->Velocity = FVector::ZeroVector;
+		AscentCharacterMovement->SetMovementMode(MOVE_Walking);
+		AscentCharacterMovement->MaxWalkSpeed = RunMaxSpeed;
+		AscentCharacterMovement->MaxFlySpeed = RunMaxSpeed;
 	}
 
 	GetWorldTimerManager().ClearTimer(JustLandedTimerHandle);
 
 	bCanMove = true;
+	bIsTraversing = false;
 	bIsHanging = false;
 	bJustLanded = false;
+	bSprint = false;
+	bWasHangingMoveInputPressed = false;
+	bWasHangingVerticalInputPressed = false;
 	LastLandingVerticalSpeed = 0.f;
+
+	UpdateGait();
 }
 
 void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckResult& TraversalResult)
 {
 	if (!MotionWarpingComponent)
+		return;
+
+	if (TraversalResult.ActionType == ETraversalAction::LedgeGrab)
 	{
+		MotionWarpingComponent->RemoveWarpTarget(FrontLedgeWarpTargetName);
+		MotionWarpingComponent->RemoveWarpTarget(BackLedgeWarpTargetName);
+		MotionWarpingComponent->RemoveWarpTarget(BackFloorWarpTargetName);
 		return;
 	}
 
-	// 기본 진행 방향은 FrontLedge에서 BackLedge로 향하는 방향을 사용한다.
-	FVector TraversalForward =
-		TraversalResult.BackLedgeLocation - TraversalResult.FrontLedgeLocation;
+	FVector TraversalForward = TraversalResult.BackLedgeLocation - TraversalResult.FrontLedgeLocation;
 
 	TraversalForward.Z = 0.f;
-
 	if (!TraversalForward.Normalize())
 	{
-		// BackLedge 정보가 없거나 두 위치가 거의 같으면 FrontLedgeNormal을 기준으로 보정한다.
 		TraversalForward = -TraversalResult.FrontLedgeNormal.GetSafeNormal();
 		TraversalForward.Z = 0.f;
 		TraversalForward.Normalize();
 	}
 
-	// 계산된 진행 방향이 현재 캐릭터 전방과 반대라면 뒤집어서 보정한다.
 	FVector ActorForward = GetActorForwardVector();
 	ActorForward.Z = 0.f;
 	ActorForward.Normalize();
 
-	if (!ActorForward.IsNearlyZero() &&
-		FVector::DotProduct(TraversalForward, ActorForward) < 0.f)
-	{
+	if (!ActorForward.IsNearlyZero() && FVector::DotProduct(TraversalForward, ActorForward) < 0.f)
 		TraversalForward *= -1.f;
-	}
 
 	if (TraversalForward.IsNearlyZero())
-	{
 		TraversalForward = ActorForward;
-	}
 
 	if (TraversalForward.IsNearlyZero())
-	{
 		TraversalForward = FVector::ForwardVector;
-	}
 
 	if (TraversalResult.bHasFrontLedge)
 	{
-		FVector FrontTargetLocation =
-			TraversalResult.FrontLedgeLocation + FVector(0.f, 0.f, 0.5f);
+		FVector FrontTargetLocation = TraversalResult.FrontLedgeLocation + FVector(0.f, 0.f, 0.5f);
 
 		FVector FrontOutward = TraversalResult.FrontLedgeNormal;
 		FrontOutward.Z = 0.f;
 
 		if (!FrontOutward.Normalize())
-		{
 			FrontOutward = -TraversalForward;
-		}
 
-		// FrontLedge 타겟이 장애물 안쪽으로 들어가지 않도록 바깥 방향으로 약간 밀어낸다.
 		FrontTargetLocation += FrontOutward * FrontLedgeOutwardOffset;
 
-		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(
-			FrontLedgeWarpTargetName,
-			MakeTraversalWarpTransformFromForward(
-				FrontTargetLocation,
-				TraversalForward
-			)
-		);
+		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(FrontLedgeWarpTargetName, MakeTraversalWarpTransformFromForward(FrontTargetLocation, TraversalForward));
 	}
 	else
-	{
 		MotionWarpingComponent->RemoveWarpTarget(FrontLedgeWarpTargetName);
-	}
 
-	// BackLedge 타겟은 장애물을 넘어가는 동작에서만 사용한다.
-	const bool bNeedsBackLedge =
-		TraversalResult.ActionType == ETraversalAction::Hurdle ||
-		TraversalResult.ActionType == ETraversalAction::Vault;
+	const bool bNeedsBackLedge = TraversalResult.ActionType == ETraversalAction::Hurdle || TraversalResult.ActionType == ETraversalAction::Vault;
 
-	FVector BackLedgeTargetLocation =
-		TraversalResult.BackLedgeLocation + FVector(0.f, 0.f, 0.5f);
+	FVector BackLedgeTargetLocation = TraversalResult.BackLedgeLocation + FVector(0.f, 0.f, 0.5f);
 
 	if (bNeedsBackLedge && TraversalResult.bHasBackLedge)
-	{
-		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(
-			BackLedgeWarpTargetName,
-			MakeTraversalWarpTransformFromForward(
-				BackLedgeTargetLocation,
-				TraversalForward
-			)
-		);
-	}
+		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(BackLedgeWarpTargetName, MakeTraversalWarpTransformFromForward(BackLedgeTargetLocation, TraversalForward));
 	else
-	{
 		MotionWarpingComponent->RemoveWarpTarget(BackLedgeWarpTargetName);
-	}
 
-	// BackFloor 타겟은 Hurdle처럼 장애물 뒤쪽 바닥까지 이어지는 동작에서 사용한다.
-	const bool bNeedsBackFloor =
-		TraversalResult.ActionType == ETraversalAction::Hurdle;
+	const bool bNeedsBackFloor = TraversalResult.ActionType == ETraversalAction::Hurdle;
 
 	if (bNeedsBackFloor && TraversalResult.bHasBackFloor)
 	{
@@ -427,35 +651,19 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 		float AnimatedDistanceToBackLedge = 0.f;
 		float AnimatedDistanceToBackFloor = 0.f;
 
-		const bool bGotBackLedgeDistance =
-			BP_GetDistanceFromLedgeAtWarpEnd(
-				TraversalResult.ChosenMontage,
-				BackLedgeWarpTargetName,
-				AnimatedDistanceToBackLedge
-			);
-
-		const bool bGotBackFloorDistance =
-			BP_GetDistanceFromLedgeAtWarpEnd(
-				TraversalResult.ChosenMontage,
-				BackFloorWarpTargetName,
-				AnimatedDistanceToBackFloor
-			);
+		const bool bGotBackLedgeDistance = BP_GetDistanceFromLedgeAtWarpEnd(TraversalResult.ChosenMontage, BackLedgeWarpTargetName, AnimatedDistanceToBackLedge);
+		const bool bGotBackFloorDistance = BP_GetDistanceFromLedgeAtWarpEnd(TraversalResult.ChosenMontage, BackFloorWarpTargetName, AnimatedDistanceToBackFloor);
 
 		if (bGotBackLedgeDistance && bGotBackFloorDistance)
 		{
-			const float ExtraFloorDistance = FMath::Abs(
-				AnimatedDistanceToBackFloor - AnimatedDistanceToBackLedge
-			);
+			const float ExtraFloorDistance = FMath::Abs(AnimatedDistanceToBackFloor - AnimatedDistanceToBackLedge);
 
 			FVector BackFloorDirection = TraversalResult.BackLedgeNormal;
 			BackFloorDirection.Z = 0.f;
 
 			if (!BackFloorDirection.Normalize())
-			{
 				BackFloorDirection = TraversalForward;
-			}
 
-			// 애니메이션상의 BackLedge-BackFloor 거리 차이를 실제 바닥 타겟 위치에 반영한다.
 			const FVector BackFloorXYLocation =
 				TraversalResult.BackLedgeLocation
 				+ BackFloorDirection * ExtraFloorDistance;
@@ -465,28 +673,10 @@ void AConcreteAscentCharacter::UpdateTraversalWarpTargets(const FTraversalCheckR
 			BackFloorTargetLocation.Z = TraversalResult.BackFloorLocation.Z;
 		}
 
-		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(
-			BackFloorWarpTargetName,
-			MakeTraversalWarpTransformFromForward(
-				BackFloorTargetLocation,
-				TraversalForward
-			)
-		);
-
-		UE_LOG(LogTemp, Warning,
-			TEXT("BackFloor Warp | BackLedgeDist:%.2f BackFloorDist:%.2f GotLedge:%d GotFloor:%d RawFloor:%s TargetFloor:%s"),
-			AnimatedDistanceToBackLedge,
-			AnimatedDistanceToBackFloor,
-			bGotBackLedgeDistance,
-			bGotBackFloorDistance,
-			*TraversalResult.BackFloorLocation.ToString(),
-			*BackFloorTargetLocation.ToString()
-		);
+		MotionWarpingComponent->AddOrUpdateWarpTargetFromTransform(BackFloorWarpTargetName, MakeTraversalWarpTransformFromForward(BackFloorTargetLocation, TraversalForward));
 	}
 	else
-	{
 		MotionWarpingComponent->RemoveWarpTarget(BackFloorWarpTargetName);
-	}
 }
 
 float AConcreteAscentCharacter::PlayTraversalMontage(UAnimMontage* Montage, float PlayRate, float StartTime)
@@ -502,12 +692,7 @@ float AConcreteAscentCharacter::PlayTraversalMontage(UAnimMontage* Montage, floa
 	if (!AnimInstance)
 		return 0.f;
 
-	const float MontageLength = AnimInstance->Montage_Play(
-		Montage,
-		PlayRate,
-		EMontagePlayReturnType::MontageLength,
-		StartTime
-	);
+	const float MontageLength = AnimInstance->Montage_Play(Montage, PlayRate, EMontagePlayReturnType::MontageLength, StartTime);
 
 	if (MontageLength <= 0.f)
 		return 0.f;

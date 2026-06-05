@@ -82,6 +82,12 @@ protected:
 	bool bJustLanded = false;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
+	bool bWasHangingMoveInputPressed = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
+	bool bWasHangingVerticalInputPressed = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	float LastLandingVerticalSpeed = 0.f;
 
 protected:
@@ -95,7 +101,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Movement")
 	float SprintMaxSpeed = 700.f;
 
-protected:
 	// Traversal state
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ascent|Traversal")
 	bool bIsTraversing = false;
@@ -103,23 +108,60 @@ protected:
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Ascent|Traversal")
 	FTraversalCheckResult CurrentTraversalResult;
 
-protected:
 	// Traversal settings
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|MotionWarping")
 	float FrontLedgeOutwardOffset = 8.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|Ledge")
+	float HangWallGap = 8.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|Ledge")
+	float HangRootZOffset = 155.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|Ledge")
+	float ClimbStartWallGap = 8.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ascent|Traversal|Ledge")
+	float ClimbStartRootZOffset = 155.f;
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void SnapToCurrentLedgeHang();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void EnterHangingState();
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void SetHangLocationFromLedgePoint(const FVector& LedgePoint, const FVector& LedgeNormal);
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void SetClimbStartLocationFromLedgePoint(const FVector& LedgePoint, const FVector& LedgeNormal);
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|MotionWarping")
+	void SetClimbStandWarpTarget(const FVector& StandLocation, const FRotator& StandRotation);
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|MotionWarping")
+	void ClearClimbStandWarpTarget();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void EnterLedgeClimbState();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void ExitHangingToFalling();
+
+	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal|Ledge")
+	void ExitHangingToStanding(const FVector& StandLocation, const FRotator& StandRotation);
 
 protected:
 	// Timers
 	FTimerHandle JustLandedTimerHandle;
 
-protected:
 	// Movement helpers
 	UFUNCTION(BlueprintCallable, Category = "Ascent|Movement")
 	void UpdateGait();
 
 	void ClearJustLanded();
 
-protected:
 	// Traversal helpers
 	UFUNCTION(BlueprintCallable, Category = "Ascent|Traversal")
 	void BeginTraversal();
