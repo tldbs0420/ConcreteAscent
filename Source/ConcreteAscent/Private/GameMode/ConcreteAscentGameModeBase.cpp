@@ -5,6 +5,7 @@
 #include "Objects/Triggers/CheckpointActor.h"
 #include "Player/ConcreteAscentCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "Player/Controller/ConcreteAscentPlayerController.h"
 
 
 AConcreteAscentGameModeBase::AConcreteAscentGameModeBase()
@@ -23,6 +24,7 @@ void AConcreteAscentGameModeBase::BeginPlay()
 
 void AConcreteAscentGameModeBase::SetCurrentCheckpoint(ACheckpointActor* NewCheckpoint)
 {
+	if (CurrentCheckpoint) CurrentCheckpoint->SetActivated(true);
 	CurrentCheckpoint = NewCheckpoint;
 }
 
@@ -42,9 +44,16 @@ void AConcreteAscentGameModeBase::HandleGoalReached()
 
 void AConcreteAscentGameModeBase::HandleGameClear()
 {
-	bGameCleared = true;
+	if (bGameCleared)
+		return;
 
-	// TODO: UI로 종료 화면 보여주기
+	bGameCleared = true;
+	AConcreteAscentPlayerController* PlayerController = Cast<AConcreteAscentPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (!PlayerController)
+		return;
+
+	PlayerController->ShowGameClearUI();
 }
 
 FTransform AConcreteAscentGameModeBase::GetRespawnTransform()

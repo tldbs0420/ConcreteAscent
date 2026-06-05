@@ -36,4 +36,7 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Checkpoint")
 	void SetActivated(bool bInActivated);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Checkpoint")
+	void BP_OnCheckpointActivated(bool bIsActivated);
 };

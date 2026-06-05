@@ -17,6 +17,7 @@ public class ConcreteAscent : ModuleRules
             "MotionWarping",
             "PoseSearch",
             "AnimGraphRuntime",
+            "UMG",
         });
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

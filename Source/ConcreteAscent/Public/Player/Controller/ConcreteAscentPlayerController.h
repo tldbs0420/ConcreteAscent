@@ -8,6 +8,7 @@
 
 class UEnhancedInputLocalPlayerSubsystem;
 class UInputMappingContext;
+class UUserWidget;
 
 /**
  * 
@@ -29,6 +30,23 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputMappingContext> GameplayMappingContext;
 
+	UPROPERTY()
+	TObjectPtr<UUserWidget> InGameHUDWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> PauseMenuClass;
+
+	UPROPERTY()
+	TObjectPtr<UUserWidget> PauseMenuWidget;
+
+	UPROPERTY()
+	TObjectPtr<UUserWidget> GameClearUIWidget;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	bool bPauseMenuOpen = false;
+
+	void CreateInGameHUD();
+
 public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void CacheInputSubsystem();
@@ -46,11 +64,20 @@ public:
 	void SetGameplayInputMode();
 
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	void SetUIInputMode();
+	void SetGameAndUIInputMode(UUserWidget* FocusWidget);
+
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	void SetUIOnlyInputMode(UUserWidget* FocusWidget);
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void TogglePauseMenu();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void OpenPauseMenu();
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ClosePauseMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowGameClearUI();
 };

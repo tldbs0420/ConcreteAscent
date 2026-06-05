@@ -8,6 +8,7 @@
 
 class ACheckpointActor;
 class AConcreteAscentCharacter;
+class UUserWidget;
 
 /**
  * 
@@ -25,6 +26,12 @@ protected:
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Game")
 	TObjectPtr<AConcreteAscentCharacter> PlayerCharacter;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> InGameHUDClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> GameClearUIClass;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Game")
 	TObjectPtr<ACheckpointActor> CurrentCheckpoint;
@@ -64,6 +71,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Game")
 	ACheckpointActor* GetCurrentCheckpoint() const { return CurrentCheckpoint; }
+
+	UFUNCTION(BlueprintPure, Category = "UI")
+	TSubclassOf<UUserWidget> GetInGameHUDClass() const { return InGameHUDClass; }
+
+	UFUNCTION(BlueprintPure, Category = "UI")
+	TSubclassOf<UUserWidget> GetGameClearUIClass() const { return GameClearUIClass; }
 
 	UFUNCTION(BlueprintPure, Category = "Game")
 	bool IsGameCleared() const { return bGameCleared; }

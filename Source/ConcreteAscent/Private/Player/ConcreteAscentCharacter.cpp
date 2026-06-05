@@ -2,6 +2,7 @@
 
 
 #include "Player/ConcreteAscentCharacter.h"
+#include "Player/Controller/ConcreteAscentPlayerController.h"
 #include "EnhancedInputComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -94,6 +95,9 @@ void AConcreteAscentCharacter::SetupPlayerInputComponent(UInputComponent* Player
 			EnhancedInputComponent->BindAction(SprintInputAction, ETriggerEvent::Completed, this, &AConcreteAscentCharacter::StopSprint);
 			EnhancedInputComponent->BindAction(SprintInputAction, ETriggerEvent::Canceled, this, &AConcreteAscentCharacter::StopSprint);
 		}
+
+		if (PauseInputAction)
+			EnhancedInputComponent->BindAction(PauseInputAction, ETriggerEvent::Started, this, &AConcreteAscentCharacter::TogglePauseMenu);
 	}
 }
 
@@ -499,6 +503,15 @@ void AConcreteAscentCharacter::StartSprint(const FInputActionValue& InputValue)
 void AConcreteAscentCharacter::StopSprint(const FInputActionValue& InputValue)
 {
 	bSprint = false;
+}
+
+void AConcreteAscentCharacter::TogglePauseMenu(const FInputActionValue& InputValue)
+{
+	AConcreteAscentPlayerController* AscentController = Cast<AConcreteAscentPlayerController>(GetController());
+	if (!AscentController)
+		return;
+
+	AscentController->TogglePauseMenu();
 }
 
 void AConcreteAscentCharacter::Jump()

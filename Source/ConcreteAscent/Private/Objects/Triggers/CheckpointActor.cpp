@@ -21,6 +21,7 @@ FTransform ACheckpointActor::GetRespawnTransform() const
 void ACheckpointActor::SetActivated(bool bInActivated)
 {
 	bIsEnabled = bInActivated;
+	BP_OnCheckpointActivated(false);
 }
 
 void ACheckpointActor::OnPlayerEntered(AConcreteAscentCharacter* Character)
@@ -33,5 +34,5 @@ void ACheckpointActor::OnPlayerEntered(AConcreteAscentCharacter* Character)
 	// 한 번 활성화된 체크포인트는 중복 발동하지 않도록 비활성화한다.
 	bIsEnabled = false;
 
-	// TODO: 체크포인트 활성화 VFX/SFX/UI 처리
+	BP_OnCheckpointActivated(true);
 }

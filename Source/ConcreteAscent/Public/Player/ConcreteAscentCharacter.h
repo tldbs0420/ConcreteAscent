@@ -8,6 +8,7 @@
 #include "Types/ConcreteAscentTypes.h"
 #include "ConcreteAscentCharacter.generated.h"
 
+class AConcreteAscentPlayerController;
 class UInputAction;
 class UMotionWarpingComponent;
 class UParkourTraversalComponent;
@@ -60,6 +61,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
 	TObjectPtr<UInputAction> SprintInputAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ascent|Input")
+	TObjectPtr<UInputAction> PauseInputAction;
 
 protected:
 	// Movement state
@@ -193,6 +197,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void StopSprint(const FInputActionValue& InputValue);
+
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	void TogglePauseMenu(const FInputActionValue& InputValue);
 
 	virtual void Jump() override;
 
