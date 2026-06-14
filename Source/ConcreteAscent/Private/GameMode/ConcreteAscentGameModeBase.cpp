@@ -22,10 +22,58 @@ void AConcreteAscentGameModeBase::BeginPlay()
 		InitialRespawnTransform = PlayerCharacter->GetActorTransform();
 }
 
+void AConcreteAscentGameModeBase::StartRespawnFadeIn()
+{
+	AConcreteAscentPlayerController* PlayerController = Cast<AConcreteAscentPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (!PlayerController)
+		return;
+
+	const float FadeInDuration = PlayerController->StartRespawnFadeIn();
+
+	GetWorldTimerManager().ClearTimer(RespawnFinishTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		RespawnFinishTimerHandle,
+		this,
+		&AConcreteAscentGameModeBase::FinishRespawnSequence,
+		FadeInDuration,
+		false
+	);
+}
+
+void AConcreteAscentGameModeBase::FinishRespawnAfterFade()
+{
+	if (PlayerCharacter)
+		PlayerCharacter->RespawnAt(PendingRespawnTransform);
+
+	GetWorldTimerManager().ClearTimer(RespawnFadeInTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		RespawnFadeInTimerHandle,
+		this,
+		&AConcreteAscentGameModeBase::StartRespawnFadeIn,
+		RespawnBlackHoldDuration,
+		false
+	);
+}
+
+void AConcreteAscentGameModeBase::FinishRespawnSequence()
+{
+	AConcreteAscentPlayerController* PlayerController = Cast<AConcreteAscentPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (PlayerController)
+		PlayerController->FinishRespawnFadeIn();
+}
+
 void AConcreteAscentGameModeBase::SetCurrentCheckpoint(ACheckpointActor* NewCheckpoint)
 {
 	if (CurrentCheckpoint) CurrentCheckpoint->SetActivated(true);
 	CurrentCheckpoint = NewCheckpoint;
+	OnCheckpointActivated.Broadcast();
+}
+
+void AConcreteAscentGameModeBase::SetClearTime(float InClearTime)
+{
+	ClearTime = InClearTime;
 }
 
 void AConcreteAscentGameModeBase::HandleRespawnRequest()
@@ -33,7 +81,30 @@ void AConcreteAscentGameModeBase::HandleRespawnRequest()
 	if (!PlayerCharacter || !CanRespawn())
 		return;
 
-	PlayerCharacter->RespawnAt(GetRespawnTransform());
+	PendingRespawnTransform = GetRespawnTransform();
+
+	AConcreteAscentPlayerController* PlayerController = Cast<AConcreteAscentPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+	if (!PlayerController)
+	{
+		PlayerCharacter->RespawnAt(PendingRespawnTransform);
+		return;
+	}
+
+	const float FadeOutDuration = PlayerController->StartRespawnFadeOut();
+	if (FadeOutDuration <= 0.f)
+	{
+		FinishRespawnAfterFade();
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(RespawnFadeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		RespawnFadeTimerHandle,
+		this,
+		&AConcreteAscentGameModeBase::FinishRespawnAfterFade,
+		FadeOutDuration,
+		false
+	);
 }
 
 void AConcreteAscentGameModeBase::HandleGoalReached()
@@ -54,6 +125,19 @@ void AConcreteAscentGameModeBase::HandleGameClear()
 		return;
 
 	PlayerController->ShowGameClearUI();
+}
+
+void AConcreteAscentGameModeBase::HandleGameFail()
+{
+	if (bGameCleared)
+		return;
+
+	AConcreteAscentPlayerController* PlayerController = Cast<AConcreteAscentPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+
+	if (!PlayerController)
+		return;
+
+	PlayerController->ShowGameFailUI();
 }
 
 FTransform AConcreteAscentGameModeBase::GetRespawnTransform()

@@ -4,12 +4,12 @@
 #include "GameMode/ConcreteAscentStandardGameMode.h"
 #include "Objects/Triggers/CheckpointActor.h"
 
-bool AConcreteAscentStandardGameMode::CanClear() const
+bool AConcreteAscentStandardGameMode::CanClear()
 {
 	return true;
 }
 
-bool AConcreteAscentStandardGameMode::CanRespawn() const
+bool AConcreteAscentStandardGameMode::CanRespawn()
 {
 	return PlayerCharacter != nullptr;
 }

@@ -255,6 +255,8 @@ void AConcreteAscentCharacter::EnterHangingState()
 		MoveComp->MaxWalkSpeed = 0.f;
 		MoveComp->MaxFlySpeed = 0.f;
 	}
+
+	BP_OnEnterHangingState();
 }
 
 void AConcreteAscentCharacter::ExitHangingToFalling()
@@ -516,7 +518,7 @@ void AConcreteAscentCharacter::TogglePauseMenu(const FInputActionValue& InputVal
 
 void AConcreteAscentCharacter::Jump()
 {
-	if (bIsHanging)
+	if (bIsHanging || bIsTraversing)
 		return;
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
@@ -539,9 +541,6 @@ void AConcreteAscentCharacter::Jump()
 				return;
 			}
 		}
-
-		// 난간이 없으면 공중 Space는 무시한다.
-		return;
 	}
 
 	// 지상에서는 파쿠르 / 일반 점프 흐름

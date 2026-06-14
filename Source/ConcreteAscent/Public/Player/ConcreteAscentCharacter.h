@@ -181,6 +181,9 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Traversal|MotionWarping")
 	bool BP_GetDistanceFromLedgeAtWarpEnd(UAnimMontage* Montage, FName WarpTargetName, float& OutDistance) const;
 
+	UFUNCTION(BlueprintImplementableEvent, Category = "Ascent|Traversal|Ledge")
+	void BP_OnEnterHangingState();
+
 public:
 	// Input
 	UFUNCTION(BlueprintCallable, Category = "Input")
@@ -232,6 +235,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	bool IsJustLanded() const { return bJustLanded; }
+
+	UFUNCTION(BlueprintPure, Category = "Character")
+	bool IsTraversaling() const { return bIsTraversing; }
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	float GetLastLandingVerticalSpeed() const { return LastLandingVerticalSpeed; }

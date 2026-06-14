@@ -56,9 +56,7 @@ bool ALedgeObstacle::GetLedgeMoveSegment(const FVector& FrontNormal, FVector& Ou
 	if (OutRight.IsNearlyZero())
 		return false;
 
-	const float DesiredHalfLength = HorizontalLength > 0.f ? HorizontalLength * 0.5f : BoundsHalfLength;
-
-	OutHalfLength = FMath::Min(DesiredHalfLength, BoundsHalfLength);
+	OutHalfLength = BoundsHalfLength;
 
 	return OutHalfLength > KINDA_SMALL_NUMBER;
 }

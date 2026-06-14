@@ -15,6 +15,6 @@ class CONCRETEASCENT_API AConcreteAscentStandardGameMode : public AConcreteAscen
 	GENERATED_BODY()
 	
 public:
-	virtual bool CanClear() const override;
-	virtual bool CanRespawn() const override;
+	virtual bool CanClear() override;
+	virtual bool CanRespawn() override;
 };

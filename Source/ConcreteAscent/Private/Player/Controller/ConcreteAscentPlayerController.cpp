@@ -7,6 +7,7 @@
 #include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
 #include "Blueprint/UserWidget.h"
+#include "Camera/PlayerCameraManager.h"
 
 AConcreteAscentPlayerController::AConcreteAscentPlayerController()
 {
@@ -23,15 +24,19 @@ void AConcreteAscentPlayerController::BeginPlay()
 	CreateInGameHUD();
 }
 
-void AConcreteAscentPlayerController::ShowGameClearUI()
+void AConcreteAscentPlayerController::FinishShowGameClearUI()
 {
 	if (GameClearUIWidget)
 		return;
 
-	AConcreteAscentGameModeBase* GameMode = Cast<AConcreteAscentGameModeBase>(UGameplayStatics::GetGameMode(this));
+	AConcreteAscentGameModeBase* GameMode =
+		Cast<AConcreteAscentGameModeBase>(UGameplayStatics::GetGameMode(this));
 
 	if (!GameMode)
 		return;
+
+	if (InGameHUDWidget)
+		InGameHUDWidget->RemoveFromParent();
 
 	TSubclassOf<UUserWidget> GameClearUIClass = GameMode->GetGameClearUIClass();
 	if (!GameClearUIClass)
@@ -42,8 +47,135 @@ void AConcreteAscentPlayerController::ShowGameClearUI()
 		return;
 
 	GameClearUIWidget->AddToViewport(200);
+
 	UGameplayStatics::SetGamePaused(this, true);
 	SetUIOnlyInputMode(GameClearUIWidget);
+}
+
+void AConcreteAscentPlayerController::FinishShowGameFailUI()
+{
+	if (GameFailUIWidget)
+		return;
+
+	AConcreteAscentGameModeBase* GameMode =
+		Cast<AConcreteAscentGameModeBase>(UGameplayStatics::GetGameMode(this));
+
+	if (!GameMode)
+		return;
+
+	if (InGameHUDWidget)
+		InGameHUDWidget->RemoveFromParent();
+
+	TSubclassOf<UUserWidget> GameFailUIClass = GameMode->GetGameFailUIClass();
+	if (!GameFailUIClass)
+		return;
+
+	GameFailUIWidget = CreateWidget<UUserWidget>(this, GameFailUIClass);
+	if (!GameFailUIWidget)
+		return;
+
+	GameFailUIWidget->AddToViewport(200);
+
+	UGameplayStatics::SetGamePaused(this, true);
+	SetUIOnlyInputMode(GameFailUIWidget);
+}
+
+void AConcreteAscentPlayerController::FinishRespawnFadeIn()
+{
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
+	SetGameplayInputMode();
+}
+
+void AConcreteAscentPlayerController::ShowGameClearUI()
+{
+	if (GameClearUIWidget || bIsGameClearShowing)
+		return;
+
+	bIsGameClearShowing = true;
+
+	if (bPauseMenuOpen)
+		ClosePauseMenu();
+
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	FadeToBlack(FadeToBlackDuration, true);
+
+	GetWorldTimerManager().ClearTimer(GameClearFadeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		GameClearFadeTimerHandle,
+		this,
+		&AConcreteAscentPlayerController::FinishShowGameClearUI,
+		FadeToBlackDuration,
+		false
+	);
+}
+
+void AConcreteAscentPlayerController::ShowGameFailUI()
+{
+	if (GameFailUIWidget || bIsGameClearShowing)
+		return;
+
+	bIsGameClearShowing = true;
+
+	if (bPauseMenuOpen)
+		ClosePauseMenu();
+
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	FadeToBlack(FadeToBlackDuration, true);
+
+	GetWorldTimerManager().ClearTimer(GameFailFadeTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		GameFailFadeTimerHandle,
+		this,
+		&AConcreteAscentPlayerController::FinishShowGameFailUI,
+		FadeToBlackDuration,
+		false
+	);
+}
+
+void AConcreteAscentPlayerController::StartScreenFade(float FromAlpha, float ToAlpha, float Duration, bool bHoldWhenFinished)
+{
+	if (!PlayerCameraManager)
+		return;
+
+	PlayerCameraManager->StartCameraFade(
+		FromAlpha,
+		ToAlpha,
+		Duration,
+		FLinearColor::Black,
+		false,
+		bHoldWhenFinished
+	);
+}
+
+void AConcreteAscentPlayerController::FadeToBlack(float Duration, bool bHoldWhenFinished)
+{
+	StartScreenFade(0.f, 1.f, Duration, bHoldWhenFinished);
+}
+
+void AConcreteAscentPlayerController::FadeFromBlack(float Duration)
+{
+	StartScreenFade(1.f, 0.f, Duration, false);
+}
+
+float AConcreteAscentPlayerController::StartRespawnFadeOut()
+{
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	FadeToBlack(FadeToBlackDuration, true);
+
+	return FadeToBlackDuration;
+}
+
+float AConcreteAscentPlayerController::StartRespawnFadeIn()
+{
+	FadeFromBlack(FadeFromBlackDuration);
+	return FadeFromBlackDuration;
 }
 
 void AConcreteAscentPlayerController::CreateInGameHUD()

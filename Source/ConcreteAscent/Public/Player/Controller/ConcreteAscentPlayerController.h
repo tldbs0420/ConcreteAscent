@@ -24,6 +24,13 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+	FTimerHandle GameClearFadeTimerHandle;
+	FTimerHandle GameFailFadeTimerHandle;
+
+	void StartScreenFade(float FromAlpha, float ToAlpha, float Duration, bool bHoldWhenFinished);
+	void FinishShowGameClearUI();
+	void FinishShowGameFailUI();
+
 	UPROPERTY(Transient)
 	TObjectPtr<UEnhancedInputLocalPlayerSubsystem> InputSubsystem;
 
@@ -42,8 +49,19 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> GameClearUIWidget;
 
+	UPROPERTY()
+	TObjectPtr<UUserWidget> GameFailUIWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Fade")
+	float FadeToBlackDuration = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Fade")
+	float FadeFromBlackDuration = 0.5f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bPauseMenuOpen = false;
+
+	bool bIsGameClearShowing = false;
 
 	void CreateInGameHUD();
 
@@ -80,4 +98,25 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowGameClearUI();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowGameFailUI();
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Fade")
+	void FadeToBlack(float Duration, bool bHoldWhenFinished = true);
+
+	UFUNCTION(BlueprintPure, Category = "UI")
+	UUserWidget* GetInGameHUDWidget() const { return InGameHUDWidget; }
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Fade")
+	void FadeFromBlack(float Duration);
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Fade")
+	float StartRespawnFadeOut();
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Fade")
+	float StartRespawnFadeIn();
+
+	UFUNCTION(BlueprintCallable, Category = "UI|Fade")
+	void FinishRespawnFadeIn();
 };
